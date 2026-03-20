@@ -1,0 +1,11 @@
+{
+  "name": "@witness/pwa",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Witness Progressive Web App — offline evidence capture interface",
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'PWA not yet scaffolded — Phase 2'",
+    "build": "echo 'PWA not yet scaffolded — Phase 2'"
+  }
+}
