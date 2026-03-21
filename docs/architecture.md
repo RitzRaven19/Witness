@@ -21,6 +21,7 @@
 10. [Phase B Governance](#10-phase-b-governance)
 11. [Component Inventory](#11-component-inventory)
 12. [Standards Alignment](#12-standards-alignment)
+13. [Offline Resource Map](#13-offline-resource-map)
 
 ---
 
@@ -45,6 +46,13 @@ Witness is an offline-first Progressive Web App (PWA) for civilian evidence pres
 │  │                         │   │                              │  │
 │  │  Witness-facing         │   │  Survivor-facing             │  │
 │  └─────────────────────────┘   └──────────────────────────────┘  │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │            PLANE C — OFFLINE RESOURCE MAP                │    │
+│  │  PMTiles base map (OSM) + NGO-signed resource bundles    │    │
+│  │  Granaries · Water points · Underground shelters         │    │
+│  │  Civilian-facing · Zero connectivity required            │    │
+│  └──────────────────────────────────────────────────────────┘    │
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐    │
 │  │               ANALYST DASHBOARD                          │    │
@@ -77,13 +85,19 @@ Plane B delivers time-limited, cryptographically signed information from trusted
 ```
 witness/
 ├── packages/
-│   └── crypto-core/          # @witness/crypto-core
+│   ├── crypto-core/          # @witness/crypto-core
+│   │   └── src/
+│   │       ├── hash.ts        # SHA-256 via Web Crypto API + hash-wasm
+│   │       ├── encrypt.ts     # AES-256-GCM via Web Crypto API
+│   │       ├── signing.ts     # ECDSA P-256 via Web Crypto API
+│   │       ├── kdf.ts         # Argon2id via hash-wasm
+│   │       ├── custody-log.ts # Hash-chained custody log
+│   │       └── index.ts       # Package exports
+│   └── offline-map/          # @witness/offline-map (Phase 2)
 │       └── src/
-│           ├── hash.ts        # SHA-256 via Web Crypto API + hash-wasm
-│           ├── encrypt.ts     # AES-256-GCM via Web Crypto API
-│           ├── signing.ts     # ECDSA P-256 via Web Crypto API
-│           ├── kdf.ts         # Argon2id via hash-wasm
-│           ├── custody-log.ts # Hash-chained custody log
+│           ├── pmtiles.ts     # PMTiles OPFS loader + MapLibre protocol handler
+│           ├── resource-bundle.ts  # ResourceBundle signature verification
+│           ├── map-store.ts   # IndexedDB persistence for bundles + tile metadata
 │           └── index.ts       # Package exports
 ├── apps/
 │   └── pwa/                  # @witness/pwa (Phase 2)
@@ -341,7 +355,93 @@ interface RedeemableToken {
 }
 ```
 
-### 2.6 Hybrid Signature
+### 2.6 Resource Location and Resource Bundle (Plane C)
+
+```typescript
+/** Types of civilian resources displayed on the offline map. */
+type ResourceType =
+  | 'granary'            // Food / grain storage accessible to civilians
+  | 'water_point'        // Safe drinking water access
+  | 'underground_shelter'// Below-ground civilian shelter
+  | 'surface_shelter'    // Above-ground protected shelter
+  | 'clinic'             // Medical access point
+  | 'transit_corridor';  // Safe movement route (represented as a line feature)
+
+/** Operational status of a resource location. */
+type ResourceStatus = 'open' | 'limited' | 'closed' | 'unknown';
+
+/**
+ * A single mappable civilian resource point.
+ * Coordinates are WGS-84 decimal degrees.
+ */
+interface ResourceLocation {
+  /** Stable identifier for this resource. Random UUID assigned by publisher. */
+  resource_id: string;
+  type: ResourceType;
+  status: ResourceStatus;
+  /** WGS-84 latitude, decimal degrees. */
+  lat: number;
+  /** WGS-84 longitude, decimal degrees. */
+  lon: number;
+  /**
+   * Optional display label — icon-first; leave empty to render icon only.
+   * E.g. 'North sector food store'. No precise address or names of custodians.
+   */
+  label?: string;
+  /**
+   * Approximate capacity or quantity indicator. Deliberately imprecise to
+   * avoid creating actionable targeting intelligence about stockpile sizes.
+   */
+  capacity_hint?: 'low' | 'medium' | 'high';
+  /**
+   * Unix ms timestamp when this location was last verified by the publisher.
+   * Devices display a staleness warning if age exceeds publisher-defined threshold.
+   */
+  last_verified: number;
+  /**
+   * Unix ms expiry. Resource marker is hidden from the map after this time.
+   * Typically 6–48 hours, aligned with the parent ResourceBundle.
+   */
+  expires_at: number;
+}
+
+/**
+ * A signed bundle of resource locations issued by a trusted NGO publisher.
+ * Verified offline using the same HybridSignature mechanism as SignedBulletin.
+ * Stored in IndexedDB; signature is re-verified before every map render.
+ */
+interface ResourceBundle {
+  /** Random UUID. */
+  bundle_id: string;
+  /** Publisher identifier — SHA-256 fingerprint of publisher public key. */
+  publisher_id: string;
+  /** Bundle validity start (Unix ms). */
+  valid_from: number;
+  /**
+   * Bundle validity end (Unix ms). Typically 6–48 hours.
+   * Devices reject and remove expired bundles automatically.
+   */
+  valid_to: number;
+  /** Geographic bounding box covered by this bundle (WGS-84 decimal degrees). */
+  bounding_box: {
+    north: number;
+    east: number;
+    south: number;
+    west: number;
+  };
+  /** The resource points included in this bundle. */
+  resources: ResourceLocation[];
+  /**
+   * Hybrid ECDSA P-256 + ML-DSA-65 signature over the canonical bundle payload:
+   * JSON.stringify({ bundle_id, publisher_id, valid_from, valid_to,
+   *                  bounding_box, resources })
+   * Both signatures must verify for the bundle to be accepted.
+   */
+  signature: HybridSignature;
+}
+```
+
+### 2.7 Hybrid Signature
 
 Every signing operation in the system produces a `HybridSignature`. Both the classical (ECDSA P-256) and post-quantum (ML-DSA-65) signatures must independently verify for the signature to be considered valid.
 
@@ -1117,6 +1217,10 @@ Revocation process:
 | Plane B bulletin verification | `@witness/pwa` | Phase 2 | Offline hybrid signature verification |
 | Server ingestion pipeline | Backend (TBD) | Phase 2 | Node.js + PostgreSQL + S3 |
 | Analyst dashboard | Backend (TBD) | Phase 2 | WorldMonitor integration |
+| PMTiles OPFS loader | `@witness/offline-map` | Phase 2 | Custom MapLibre protocol handler; reads tile ranges from OPFS PMTiles file |
+| Resource bundle verification | `@witness/offline-map` | Phase 2 | Offline hybrid signature + expiry verification for `ResourceBundle` |
+| Map IndexedDB store | `@witness/offline-map` | Phase 2 | Bundle persistence with automatic expiry eviction |
+| MapLibre GL JS map renderer | `@witness/pwa` | Phase 2 | Icon-first resource map; granaries, water points, shelters |
 
 ---
 
@@ -1135,6 +1239,124 @@ Revocation process:
 | tus Resumable Upload Protocol v1.0.0 | Upload and sync |
 | DENSO WAVE QR Code Specification | QR air-gap transfer; maximum 2,953 bytes binary per code |
 | RFC 7518 — JSON Web Algorithms | Base64url encoding for signature serialisation |
+| OpenStreetMap ODbL Licence | Base map tile data for Plane C offline resource map |
+| Protomaps PMTiles Specification | Single-file tile archive format; OPFS-stored; range-request addressable |
+| W3C File System Access API (OPFS) | Storage of PMTiles regional file; excluded from browser history |
+
+---
+
+---
+
+## 13. Offline Resource Map
+
+### 13.1 Purpose
+
+Plane C provides civilians with a visual, icon-first map of nearby life-critical resources: food stores (granaries), safe water access points, underground shelters, and surface shelters. It is designed to function with zero network connectivity once map tiles and resource bundles are downloaded or received via an offline channel.
+
+This plane is distinct from Plane B (which delivers text bulletins) in that it provides spatial awareness — enabling a person to navigate to a resource without prior knowledge of the area. Both planes share the same publisher trust model and hybrid signature verification.
+
+### 13.2 Design Constraints
+
+- **Fully offline**: map tile rendering and resource display require no network after initial sync.
+- **Privacy-preserving**: the device's GPS position is read once on explicit user gesture for "show my position" and is never stored, logged, or transmitted.
+- **Tamper-evident**: resource bundles are cryptographically signed by trusted NGO publishers using the same `HybridSignature` mechanism as Plane B bulletins. A bundle that fails signature verification is silently rejected.
+- **Staleness-aware**: expired and stale resources are hidden automatically. Capacity hints are deliberately imprecise (`'low' | 'medium' | 'high'`) to avoid creating targetable intelligence about exact stockpile sizes.
+- **Small footprint**: PMTiles regional files are sized for the conflict area of interest; typically 50–500 MB per region. Stored in OPFS.
+- **Panic purge**: the PMTiles file and all IndexedDB resource bundles are fully wiped by the existing panic purge routine.
+
+### 13.3 Technology Stack
+
+| Component | Technology | Rationale |
+|---|---|---|
+| Map renderer | MapLibre GL JS | Open source, WebGL-accelerated, offline-capable, no API key required |
+| Base tile format | PMTiles (Protomaps) | Single-file, HTTP range-request compatible, storable in OPFS without a tile server |
+| Tile source data | OpenStreetMap (ODbL licence) | Free, community-maintained, globally available; appropriate for conflict regions |
+| Resource data format | `ResourceBundle` (signed JSON) | Verified offline via existing `HybridSignature`; same trust infrastructure as Plane B |
+| Tile storage | OPFS (Origin Private File System) | Persists across sessions; excluded from browser history and developer tools |
+| Resource bundle storage | IndexedDB | Consistent with all other Plane B structured data |
+| Location API | Web Geolocation API (one-shot only) | Requires explicit user gesture; position is never watched or stored |
+
+### 13.4 Offline Tile Strategy
+
+PMTiles is a single-file archive format for map tiles. A region-scoped PMTiles file contains all vector tiles for the geographic area of interest, addressed by standard tile coordinates. MapLibre GL JS uses a custom `pmtiles://` protocol handler that translates tile requests into HTTP range requests against the local OPFS file — no tile server is required.
+
+**Initial tile acquisition** (requires connectivity or physical transfer):
+
+1. User selects conflict region from a pre-defined list maintained by trusted NGO publishers.
+2. Service Worker downloads the PMTiles file for that region (~50–500 MB) in the background.
+3. File is written to OPFS via the File System Access API.
+4. MapLibre GL JS is configured with the `pmtiles://` custom protocol pointing at the OPFS file.
+5. All subsequent map renders are fully local; no outbound tile requests are made.
+
+**Offline tile distribution alternatives** (zero connectivity):
+
+- Transfer via QR code sequence (small regions only, impractical for large areas).
+- Transfer via Wi-Fi Direct or BLE from a pre-loaded device (same P2P mechanism as evidence transfer).
+- Pre-loaded by NGO field staff onto device before deployment in a no-connectivity zone.
+
+### 13.5 Resource Bundle Distribution Flow
+
+Resource bundles follow the same distribution channels as Plane B bulletins:
+
+```
+NGO publisher
+  → Compiles list of ResourceLocation entries with expiry timestamps
+  → Signs ResourceBundle with hybrid ECDSA P-256 + ML-DSA-65 key
+  → Distributes via one or more channels:
+      HTTPS pull (when online)
+      QR code sequence (offline, small bundles)
+      BLE beacon broadcast (offline, small bundles)
+      Wi-Fi Direct transfer from field device (offline, full bundles)
+
+Witness device
+  → Receives ResourceBundle (any channel)
+  → Verifies hybrid signature against local trust bundle (fully offline)
+  → Checks valid_from / valid_to window; rejects expired bundles
+  → Stores in IndexedDB if valid
+  → MapLibre GL JS overlay renders resource markers on next map load
+  → Expired bundles are automatically removed from IndexedDB
+```
+
+### 13.6 Map UI Design
+
+Consistent with the rest of Witness, the map UI is icon-first with no legal jargon:
+
+| Resource type | Icon | Colour |
+|---|---|---|
+| Granary / food store | Wheat sheaf | Amber |
+| Water point | Water droplet | Blue |
+| Underground shelter | Down-arrow + shield | Grey |
+| Surface shelter | Shield | Green |
+| Clinic | Cross | Red |
+| Transit corridor | Arrow path | White |
+
+Status overlays:
+- `open` → full colour icon
+- `limited` → half-opacity icon + small warning badge
+- `closed` → greyed icon with X; hidden after 2 hours
+- `unknown` → icon with `?` badge
+
+Capacity hint displayed as a small bar beneath the icon (low / medium / high). No numeric values displayed.
+
+### 13.7 Privacy Design
+
+| Concern | Mitigation |
+|---|---|
+| Device location upload | GPS is read once on user gesture for "centre map on me" only. Never stored to IndexedDB, never included in any upload or log entry. |
+| Resource interaction tracking | Map pan, zoom, and marker taps are not logged in the custody log or any other store. |
+| Targetable resource intelligence | Capacity hints are categorical (`low/medium/high`), not numeric. Precise coordinates are included in the signed bundle but are not displayed as text to the user. |
+| False resource injection | All bundles require a valid `HybridSignature` from a publisher in the local trust bundle. A device with no connectivity cannot be fed false resource data by a rogue actor without a valid signing key. |
+| Staleness risk | `expires_at` per resource and `valid_to` per bundle enforce freshness. Stale resources are hidden, not merely greyed, to prevent civilians acting on outdated data. |
+| Panic purge scope | PMTiles OPFS file + all IndexedDB resource bundles are included in the existing panic purge routine. Map data is considered equally sensitive to evidence. |
+
+### 13.8 Package: `@witness/offline-map`
+
+| File | Responsibility |
+|---|---|
+| `pmtiles.ts` | Registers the `pmtiles://` custom protocol with MapLibre; reads tile byte ranges from OPFS; handles tile cache invalidation on region change |
+| `resource-bundle.ts` | `verifyBundle(bundle, trustBundle): Promise<boolean>` — hybrid signature verification; expiry check; schema validation |
+| `map-store.ts` | IndexedDB persistence layer for `ResourceBundle` objects; automatic expiry eviction on open; region metadata for tile management |
+| `index.ts` | Public exports: `verifyBundle`, `loadMap`, `MapStore`, TypeScript types |
 
 ---
 
