@@ -93,12 +93,19 @@ witness/
 │   │       ├── kdf.ts         # Argon2id via hash-wasm
 │   │       ├── custody-log.ts # Hash-chained custody log
 │   │       └── index.ts       # Package exports
-│   └── offline-map/          # @witness/offline-map (Phase 2)
+│   ├── offline-map/          # @witness/offline-map (Phase 2)
+│   │   └── src/
+│   │       ├── pmtiles.ts     # PMTiles OPFS loader + MapLibre protocol handler
+│   │       ├── resource-bundle.ts  # ResourceBundle signature verification
+│   │       ├── map-store.ts   # IndexedDB persistence for bundles + tile metadata
+│   │       └── index.ts       # Package exports
+│   └── lora-dtn/             # @witness/lora-dtn (Phase 2)
 │       └── src/
-│           ├── pmtiles.ts     # PMTiles OPFS loader + MapLibre protocol handler
-│           ├── resource-bundle.ts  # ResourceBundle signature verification
-│           ├── map-store.ts   # IndexedDB persistence for bundles + tile metadata
-│           └── index.ts       # Package exports
+│           ├── serial-transport.ts  # Web Serial API transport (USB-C)
+│           ├── ble-transport.ts     # Web Bluetooth API transport (BLE)
+│           ├── packet.ts            # LoRaDTNPacket encode/decode + HMAC
+│           ├── dtn-queue.ts         # IndexedDB outbound queue + seen_ids cache
+│           └── index.ts             # Package exports
 ├── apps/
 │   └── pwa/                  # @witness/pwa (Phase 2)
 │       └── src/               # React + TypeScript + Vite
@@ -837,7 +844,7 @@ The five offline transfer channels, in order of payload capacity:
 | **PWA service worker cache + IndexedDB** | Medium–Large (MBs to GBs, subject to storage quota) | None — fully offline after initial install | Medium (IP on install; none thereafter) | Primary evidence storage, upload queue, app shell offline availability |
 | **QR air-gap transfer** | Small (~2,900 bytes per QR code; multi-QR for larger payloads) | None — optical transfer between devices | Low–Medium (device proximity visible to observer) | Hash receipts, signed tokens, trust bundle fragments, small key material |
 | **Wi-Fi Direct / P2P (Nearby Connections API)** | Large (any file size; limited by transfer time) | None — device-to-device radio only | Medium–High (Wi-Fi probe frames visible; device presence revealed) | Moving encrypted blobs from witness device to exfiltration helper device |
-| **LoRa radio relay** | Tiny–Small (250 bytes/packet at SF12; ~1 KB effective payload per transmission) | None — LoRa radio hardware required | Low (RF emissions detectable; timing analysis possible) | Hash receipts and minimal evidence tokens in extreme connectivity denial |
+| **LoRa DTN mesh** | Tiny–Small (250 bytes/packet at SF12; ~1 KB effective payload per hop) | None — LoRa companion hardware required (USB-C or BLE-connected board) | Low–Medium (RF emissions detectable; node density reveals activity) | Multi-hop store-and-forward escape network; hash receipts hop device-to-device until a connected node exfiltrates to server |
 | **Satellite terminal** | Medium (Iridium SBD: 340 bytes/message; VSAT: MB+) | Satellite hardware required | Medium (uplink detectable; IP of ground station exposed) | Hash receipts via Iridium SBD; full blob upload via VSAT when available |
 
 **Notes on metadata risk:**
@@ -845,6 +852,113 @@ The five offline transfer channels, in order of payload capacity:
 - QR transfer requires physical proximity and line-of-sight, which is low-risk in most scenarios but reveals that two devices are exchanging data.
 - Wi-Fi Direct probe frames expose the device's MAC address (unless MAC randomisation is active, which is default on Android 10+ and iOS 14+).
 - LoRa RF emissions are detectable with RF monitoring equipment; the transmission pattern and timing may be analysed.
+- LoRa mesh node density in an area may reveal civilian activity to an adversary with RF monitoring capability.
+
+### 6.2 LoRa DTN Mesh — Design Detail
+
+The LoRa channel is designed as a **Delay-Tolerant Network (DTN)** with epidemic store-and-forward routing. It solves the core problem: a witness device cannot reach the internet, and may never be able to — but data can still escape if other devices form a relay chain toward any node with eventual connectivity.
+
+**The model:**
+```
+[Witness Phone A]──BLE/USB──[LoRa Node A]
+                                   │ LoRa RF
+                             [LoRa Node B] ← carried by a person moving away from conflict zone
+                                   │ LoRa RF
+                             [LoRa Node C]
+                                   │ LoRa RF
+                             [LoRa Node D] ← this node has intermittent satellite or cellular
+                                   │
+                             [Server / ingestion endpoint]
+                                   │
+                             [Hash receipt confirmed]
+```
+
+No single path is required. Any node that receives the packet and later gains connectivity — or passes it to another node that does — can complete the delivery. This is **epidemic routing**: the packet spreads outward until absorbed by a connected node.
+
+**Hardware requirement:**
+
+LoRa is not built into smartphones. Users require a small companion device:
+
+| Device | Connection | Cost | Notes |
+|---|---|---|---|
+| Heltec WiFi LoRa 32 | USB-C or BLE | ~$20–35 | Arduino-based; open hardware |
+| TTGO T-Beam | USB-C or BLE | ~$25–40 | Includes GPS; useful for geotag-free relay |
+| RAK WisBlock | BLE | ~$30–50 | Modular; lower power draw |
+| Meshtastic-compatible device | BLE | ~$20–50 | Any Meshtastic-supported board |
+
+The PWA communicates with the companion device via Web Bluetooth API (BLE) or Web Serial API (USB-C). The companion device handles all RF operations.
+
+**Packet format:**
+
+Each LoRa packet carries a minimal, self-contained payload. Full encrypted blobs are never transmitted over LoRa — only the `HashReceipt` (the tamper-proof fingerprint). This keeps each packet under ~1 KB.
+
+```
+LoRaDTNPacket {
+  version:     uint8          // Protocol version; currently 1
+  packet_id:   bytes[8]       // Random 8-byte ID; used for deduplication
+  hop_count:   uint8          // Incremented at each relay; dropped if > MAX_HOPS (default: 7)
+  payload_type: uint8         // 0x01 = HashReceipt | 0x02 = TrustBundleFragment | 0x03 = ResourceBundle
+  payload:     bytes[≤200]    // Compressed, encrypted payload (see below)
+  hmac:        bytes[8]       // Truncated HMAC-SHA256 over (packet_id || hop_count || payload)
+                              // Prevents relay nodes injecting or mutating packets
+}
+```
+
+**Payload encoding for HashReceipt (~estimated compressed size: 150–220 bytes):**
+```
+media_hash:        32 bytes   // SHA-256 of plaintext media
+blob_id:            8 bytes   // First 8 bytes of UUID (sufficient for dedup)
+capture_time:       4 bytes   // Unix timestamp, uint32
+ecdsa_sig:         64 bytes   // ECDSA P-256 signature (raw r||s, not DER)
+ml_dsa_sig_prefix: 32 bytes   // First 32 bytes of ML-DSA-65 sig (truncated for size)
+key_id:            16 bytes   // Publisher/device key fingerprint (first 16 bytes)
+                  ─────────
+Total:            156 bytes   // Fits in a single LoRa packet at SF12/BW125
+```
+
+Note: the truncated ML-DSA-65 signature is a bandwidth compromise. The full ML-DSA-65 signature (3,309 bytes) is stored locally and uploaded via any higher-bandwidth channel when available. The truncated prefix in the LoRa packet proves the signing key was used without transmitting the full signature.
+
+**Routing protocol — epidemic with deduplication:**
+
+```
+On receive(packet):
+  if packet.hop_count > MAX_HOPS → discard
+  if packet.packet_id in seen_packet_ids → discard (already relayed)
+  if hmac_verify(packet) == false → discard
+  store packet in local DTN buffer (max 50 packets, FIFO eviction)
+  add packet.packet_id to seen_packet_ids (rolling window of 200 IDs)
+  increment packet.hop_count
+  rebroadcast(packet) after random_delay(0–5s)  // jitter reduces collision storms
+  if self has internet connectivity:
+    forward payload to ingestion endpoint via HTTPS
+    mark packet as delivered (stop rebroadcasting)
+```
+
+**Security properties of the mesh:**
+
+| Property | Implementation |
+|---|---|
+| Packet integrity | HMAC-SHA256 (truncated) over packet body; relay nodes cannot mutate payload |
+| Evidence authenticity | ECDSA signature in payload; server verifies full signature on ingestion (full sig uploaded separately when bandwidth allows) |
+| No identity in packet | `blob_id` is a random UUID; `key_id` is a key fingerprint, not a person identifier |
+| Replay resistance | `packet_id` deduplication at every node; `capture_time` checked against server time on ingestion |
+| Adversarial relay | A malicious relay node can drop packets (denial of service) but cannot forge or modify evidence — the ECDSA signature will fail on server ingestion |
+| RF detectability | LoRa transmissions are detectable. The packet content is encrypted and integrity-protected but the fact of transmission is visible to RF monitoring. Users should be aware of this risk. |
+
+**PWA integration:**
+
+The PWA connects to the companion LoRa device via Web Bluetooth (BLE) or Web Serial (USB-C):
+
+```
+@witness/lora-dtn  (new package, Phase 2)
+├── serial-transport.ts    Web Serial API transport (USB-C connection)
+├── ble-transport.ts       Web Bluetooth API transport (BLE connection)
+├── packet.ts              LoRaDTNPacket encode/decode + HMAC verification
+├── dtn-queue.ts           IndexedDB store for outbound packet queue + seen_ids cache
+└── index.ts               exports: LoRaTransport, enqueuHashReceipt, DTNQueue
+```
+
+The `enqueueHashReceipt()` function takes a `HashReceipt` from `@witness/crypto-core`, encodes it into a `LoRaDTNPacket`, stores it in the DTN queue in IndexedDB, and sends it to the companion device for immediate broadcast. If the device is not connected, the packet remains queued and is sent when a device connects.
 
 ---
 
@@ -1221,6 +1335,10 @@ Revocation process:
 | Resource bundle verification | `@witness/offline-map` | Phase 2 | Offline hybrid signature + expiry verification for `ResourceBundle` |
 | Map IndexedDB store | `@witness/offline-map` | Phase 2 | Bundle persistence with automatic expiry eviction |
 | MapLibre GL JS map renderer | `@witness/pwa` | Phase 2 | Icon-first resource map; granaries, water points, shelters |
+| LoRa DTN packet encoder | `@witness/lora-dtn` | Phase 2 | Encodes HashReceipt into LoRaDTNPacket; HMAC signing; hop-count enforcement |
+| LoRa Web Serial transport | `@witness/lora-dtn` | Phase 2 | USB-C connection to LoRa companion device via Web Serial API |
+| LoRa Web Bluetooth transport | `@witness/lora-dtn` | Phase 2 | BLE connection to LoRa companion device via Web Bluetooth API |
+| DTN outbound queue | `@witness/lora-dtn` | Phase 2 | IndexedDB queue for unsent packets + rolling seen_ids deduplication cache |
 
 ---
 

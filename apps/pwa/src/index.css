@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap');
+
+@layer base {
+  html, body, #root {
+    @apply h-full w-full overflow-hidden;
+    background-color: #0d0d0d;
+    color: #f5f5f5;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+    font-family: 'Inter', sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer utilities {
+  .font-sentry {
+    font-family: 'Space Mono', monospace;
+  }
+}
