@@ -2,13 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "WebWorker"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "jsx": "react-jsx",
     "strict": true,
     "noEmit": true
   },
-  "include": ["src"],
-  "exclude": ["src/sw.ts"]
+  "include": ["src/sw.ts"]
 }

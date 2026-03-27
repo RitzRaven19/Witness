@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { purgeAll } from '../store/evidenceStore';
 
 interface Props {
   pin: string;
@@ -18,19 +19,25 @@ export function PurgeScreen({ pin, onClose, onActivateDecoy }: Props) {
 
   function handleConfirm() {
     setStage('wiping');
-    // Simulate wipe progress
     let p = 0;
     const interval = setInterval(() => {
       p += Math.random() * 18 + 5;
       if (p >= 100) {
-        p = 100;
         clearInterval(interval);
         setWipeProgress(100);
-        setTimeout(() => {
-          setStage('done');
-          // After showing done screen briefly, switch to decoy
-          setTimeout(onActivateDecoy, 2200);
-        }, 400);
+        // Real purge: wipe IndexedDB + OPFS + localStorage
+        purgeAll()
+          .catch(() => {}) // best-effort — even if storage APIs fail, proceed to decoy
+          .finally(() => {
+            // Preserve PIN so decoy calculator unlock still works after purge
+            const savedPin = localStorage.getItem('witness_pin');
+            localStorage.clear();
+            if (savedPin) localStorage.setItem('witness_pin', savedPin);
+            setTimeout(() => {
+              setStage('done');
+              setTimeout(onActivateDecoy, 2200);
+            }, 400);
+          });
       } else {
         setWipeProgress(Math.min(p, 100));
       }

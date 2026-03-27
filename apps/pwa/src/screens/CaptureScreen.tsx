@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, ReactNode } from 'react';
+import QRCode from 'qrcode';
 import { useCapture } from '../hooks/useCapture';
 
 interface Props {
@@ -164,31 +165,30 @@ export function CaptureScreen({ onSaved }: Props) {
   // ── Camera preview ───────────────────────────────────────────────────────
   if (state.phase === 'previewing') {
     return (
-      <div className="flex flex-col flex-1 relative bg-black">
-        <video ref={videoRef} autoPlay playsInline muted className="flex-1 object-cover" />
-        
-        {/* Sci-fi Overlay Elements */}
-        <div className="absolute inset-0 pointer-events-none p-4 pb-24 flex flex-col justify-between">
-           <div className="flex justify-between items-start">
-             <div className="w-8 h-8 border-t-2 border-l-2 border-sentry-red"></div>
-             <div className="text-sentry-red font-sentry text-xs">[ REC_STANDBY ]</div>
-             <div className="w-8 h-8 border-t-2 border-r-2 border-sentry-red"></div>
-           </div>
-           <div className="flex justify-between items-end">
-             <div className="w-8 h-8 border-b-2 border-l-2 border-sentry-red"></div>
-             <div className="w-8 h-8 border-b-2 border-r-2 border-sentry-red"></div>
-           </div>
+      <div className="relative flex-1 bg-black min-h-0">
+        <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+        {/* Corner brackets */}
+        <div className="absolute inset-0 pointer-events-none p-4 flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <div className="w-8 h-8 border-t-2 border-l-2 border-sentry-red"></div>
+            <div className="text-sentry-red font-sentry text-xs">[ REC_STANDBY ]</div>
+            <div className="w-8 h-8 border-t-2 border-r-2 border-sentry-red"></div>
+          </div>
+          <div className="flex justify-between items-end pb-6">
+            <div className="w-8 h-8 border-b-2 border-l-2 border-sentry-red"></div>
+            <div className="w-8 h-8 border-b-2 border-r-2 border-sentry-red"></div>
+          </div>
         </div>
-
-        <div className="absolute bottom-6 w-full flex items-center justify-between px-8 z-10 pb-[72px]">
-          <button onClick={handleDismiss} className="text-zinc-400 font-sentry text-xs px-4 py-2 border border-zinc-700 bg-black/50">
+        {/* Controls overlaid at bottom */}
+        <div className="absolute bottom-6 w-full flex items-center justify-between px-8 z-10">
+          <button onClick={handleDismiss} className="text-zinc-400 font-sentry text-xs px-4 py-2 border border-zinc-700 bg-black/60">
             [ CANCEL ]
           </button>
           <button
             onClick={() => videoRef.current && snapPhoto(videoRef.current)}
             className="w-16 h-16 rounded-full border-4 border-sentry-red bg-black/50 active:scale-95 flex items-center justify-center"
           >
-             <div className="w-12 h-12 rounded-full bg-sentry-red/50"></div>
+            <div className="w-12 h-12 rounded-full bg-sentry-red/50"></div>
           </button>
           <div className="w-20" />
         </div>
@@ -228,7 +228,7 @@ export function CaptureScreen({ onSaved }: Props) {
           </div>
         )}
 
-        <div className="absolute bottom-12 w-full flex flex-col items-center gap-6 z-10 pb-[72px]">
+        <div className="absolute bottom-12 w-full flex flex-col items-center gap-6 z-10">
           <button
             onClick={handleStop}
             className="flex items-center gap-3 px-8 py-4 bg-sentry-red text-white font-sentry font-bold border-2 border-white active:scale-95 shadow-[0_0_15px_rgba(204,0,0,0.5)]"
@@ -259,19 +259,17 @@ export function CaptureScreen({ onSaved }: Props) {
   // ── Done ─────────────────────────────────────────────────────────────────
   if (state.phase === 'done') {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 gap-4 px-6 bg-sentry-dark">
-        <div className="w-20 h-20 rounded-full bg-sentry-green/10 border-2 border-sentry-green flex items-center justify-center shadow-[0_0_20px_rgba(0,255,51,0.2)]">
-          <CheckIcon className="w-10 h-10 text-sentry-green drop-shadow-[0_0_8px_rgba(0,255,51,0.8)]" />
+      <div className="flex flex-col items-center justify-center flex-1 gap-4 px-6 bg-sentry-dark overflow-y-auto py-6">
+        <div className="w-16 h-16 rounded-full bg-sentry-green/10 border-2 border-sentry-green flex items-center justify-center shadow-[0_0_20px_rgba(0,255,51,0.2)]">
+          <CheckIcon className="w-8 h-8 text-sentry-green drop-shadow-[0_0_8px_rgba(0,255,51,0.8)]" />
         </div>
-        <p className="text-sentry-green font-sentry text-lg font-bold tracking-widest mt-4">SECURED_PROTOCOL</p>
-        <div className="bg-black border border-zinc-800 p-4 font-sentry w-full max-w-xs text-center">
-           <p className="text-zinc-400 text-[10px] mb-1">HASH_IDENTIFIER:</p>
-           <p className="text-zinc-300 text-xs break-all">{state.hash.slice(0, 32)}…</p>
-        </div>
-        <p className="text-zinc-500 font-sentry text-[10px] tracking-widest">TRANSMISSION_QUEUED</p>
+        <p className="text-sentry-green font-sentry text-lg font-bold tracking-widest">SECURED</p>
+
+        <EvidenceReceipt hash={state.hash} type={state.type} />
+
         <button
           onClick={handleDismiss}
-          className="mt-8 px-8 py-3 bg-black border border-zinc-700 text-zinc-300 font-sentry text-xs active:bg-zinc-800"
+          className="mt-4 px-8 py-3 bg-black border border-zinc-700 text-zinc-300 font-sentry text-xs active:bg-zinc-800"
         >
           [ INITIALIZE NEW CAPTURE ]
         </button>
@@ -296,6 +294,60 @@ export function CaptureScreen({ onSaved }: Props) {
   }
 
   return null;
+}
+
+// ── Evidence Receipt ─────────────────────────────────────────────────────────
+
+function EvidenceReceipt({ hash, type }: { hash: string; type: string }) {
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const shortCode = hash.slice(0, 8).toUpperCase();
+  const capturedAt = new Date().toISOString();
+
+  useEffect(() => {
+    const payload = JSON.stringify({ hash, type, capturedAt });
+    QRCode.toDataURL(payload, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 160,
+      color: { dark: '#00ff33', light: '#000000' },
+    })
+      .then(setQrDataUrl)
+      .catch(() => {});
+  }, [hash]);
+
+  return (
+    <div className="w-full max-w-xs bg-black border border-zinc-800 font-sentry">
+      {/* Receipt header */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
+        <span className="text-[9px] text-zinc-500 tracking-widest">EVIDENCE RECEIPT</span>
+        <span className="text-[9px] text-sentry-green tracking-widest">{type.toUpperCase()}</span>
+      </div>
+
+      {/* Short code + QR side by side */}
+      <div className="flex items-center gap-4 px-4 py-3">
+        <div className="flex flex-col gap-1">
+          <span className="text-[8px] text-zinc-500 tracking-widest">SHORT CODE</span>
+          <span className="text-sentry-green text-xl font-bold tracking-widest">{shortCode}</span>
+          <span className="text-[8px] text-zinc-600 tracking-widest mt-1">HASH (SHA-256)</span>
+          <span className="text-zinc-400 text-[9px] break-all leading-relaxed w-36">{hash}</span>
+        </div>
+        <div className="shrink-0">
+          {qrDataUrl
+            ? <img src={qrDataUrl} alt="QR receipt" className="w-[80px] h-[80px]" />
+            : <div className="w-[80px] h-[80px] border border-zinc-800 flex items-center justify-center">
+                <span className="text-zinc-600 text-[8px]">QR…</span>
+              </div>
+          }
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="px-4 py-2 border-t border-zinc-800 flex items-center justify-between">
+        <span className="text-[8px] text-zinc-600 tracking-widest">QUEUED FOR UPLOAD</span>
+        <span className="text-[8px] text-zinc-600 tracking-widest">{capturedAt.slice(0, 16).replace('T', ' ')}Z</span>
+      </div>
+    </div>
+  );
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────

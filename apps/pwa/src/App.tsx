@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { processUploadQueue } from './store/uploadQueue';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { DesktopScreen } from './screens/DesktopScreen';
 import { HomeScreen } from './screens/HomeScreen';
@@ -28,6 +29,27 @@ export function App() {
   const [decoyMode, setDecoyMode] = useState(() => localStorage.getItem('witness_decoy') === '1');
   const [pin] = useState(getOrCreatePin);
   const isDesktop = useMediaQuery('(min-width: 1024px)');
+
+  // Drain the upload queue on startup, on connectivity restore, and when
+  // the service worker background-sync fires a WITNESS_SYNC_UPLOAD message.
+  useEffect(() => {
+    processUploadQueue().catch(() => {});
+
+    const onOnline = () => processUploadQueue().catch(() => {});
+    window.addEventListener('online', onOnline);
+
+    const onSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'WITNESS_SYNC_UPLOAD') {
+        processUploadQueue().catch(() => {});
+      }
+    };
+    navigator.serviceWorker?.addEventListener('message', onSwMessage);
+
+    return () => {
+      window.removeEventListener('online', onOnline);
+      navigator.serviceWorker?.removeEventListener('message', onSwMessage);
+    };
+  }, []);
 
   function deactivateDecoy() {
     localStorage.removeItem('witness_decoy');

@@ -1,6 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import { CaptureScreen } from './CaptureScreen';
+import { processUploadQueue } from '../store/uploadQueue';
 
 export function DesktopScreen() {
+
+  const [showCapture, setShowCapture] = useState(false);
+
+  const handleCaptureSaved = useCallback(() => {
+    setShowCapture(false);
+    processUploadQueue().catch(() => {});
+  }, []);
 
   const [logs] = useState([
     '[ 14:22:01 ] :: NETWORK_OMEGA_STABLE',
@@ -291,7 +300,7 @@ export function DesktopScreen() {
                 <VaultItem label="SURVIVAL_P"  type="folder" />
                 <VaultItem label="INTEL_LOGS"  type="folder" />
                 <VaultItem label="BLEED_CTRL"  type="doc"    active />
-                <VaultItem label="NEW_FILE"    type="plus"   placeholder />
+                <VaultItem label="NEW_FILE"    type="plus"   placeholder onClick={() => setShowCapture(true)} />
               </div>
             </div>
 
@@ -376,6 +385,22 @@ export function DesktopScreen() {
         <NavBtn icon={<MapIcon />}      label="MAP"      />
         <NavBtn icon={<SettingsIcon />} label="SETTINGS" />
       </nav>
+
+      {/* ── CAPTURE OVERLAY ── */}
+      {showCapture && (
+        <div className="absolute inset-0 z-50 bg-[#0d0d0d] flex flex-col">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[#1e1e1e] bg-[#0a0a0a] shrink-0">
+            <span className="text-[#00ff33] text-[11px] font-bold tracking-[0.2em]">CAPTURE_TERMINAL</span>
+            <button
+              onClick={() => setShowCapture(false)}
+              className="text-gray-500 hover:text-gray-300 text-[10px] tracking-widest px-3 py-1 border border-[#222] hover:border-[#444]"
+            >
+              ✕ CLOSE
+            </button>
+          </div>
+          <CaptureScreen onSaved={handleCaptureSaved} />
+        </div>
+      )}
     </div>
   );
 }
@@ -399,11 +424,11 @@ function AssetItem({ name, status, time, dotColor, statusColor }: {
   );
 }
 
-function VaultItem({ label, type, active, placeholder }: {
-  label: string; type: 'folder' | 'doc' | 'plus'; active?: boolean; placeholder?: boolean;
+function VaultItem({ label, type, active, placeholder, onClick }: {
+  label: string; type: 'folder' | 'doc' | 'plus'; active?: boolean; placeholder?: boolean; onClick?: () => void;
 }) {
   return (
-    <button className={`flex flex-col items-center justify-center py-2 px-1 border transition-all ${
+    <button onClick={onClick} className={`flex flex-col items-center justify-center py-2 px-1 border transition-all ${
       active       ? 'border-[#00ff33]/60 bg-[#00ff33]/8 text-[#00ff33]'
       : placeholder ? 'border-dashed border-[#222] text-gray-600 hover:border-[#333] hover:text-gray-400'
       : 'border-[#1e1e1e] bg-[#0d0d0d] text-gray-500 hover:border-[#333] hover:text-gray-300'

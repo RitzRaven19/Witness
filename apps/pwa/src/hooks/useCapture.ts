@@ -9,6 +9,8 @@ import {
   appendEvent,
 } from '@witness/crypto-core';
 import { addEvidence, storeBlob } from '../store/evidenceStore';
+import { processUploadQueue, registerBackgroundSync } from '../store/uploadQueue';
+import { stripMetadata } from '../utils/stripMetadata';
 import type { EvidenceType } from '../store/db';
 
 export type CaptureState =
@@ -31,7 +33,11 @@ export function useCapture(onSaved: () => void) {
   async function processBlob(blob: Blob, type: EvidenceType) {
     setState({ phase: 'processing' });
     try {
-      const buffer = await blob.arrayBuffer();
+      const rawBuffer = await blob.arrayBuffer();
+      // Strip metadata before hashing so the hash reflects the clean file.
+      // Photo path: canvas.toBlob() already produces EXIF-free JPEG; stripMetadata
+      // is a no-op safety net. Video/audio: scrubs the WebM DateUTC field.
+      const buffer = stripMetadata(rawBuffer, blob.type);
       const hash = await hashFile(buffer);
       const key = await generateEncryptionKey();
       const { ciphertext, iv } = await encrypt(key, buffer);
@@ -59,6 +65,10 @@ export function useCapture(onSaved: () => void) {
 
       setState({ phase: 'done', hash, type });
       onSaved();
+      // Attempt upload immediately; also register a background sync tag so
+      // the browser can retry if the connection arrives after the tab closes.
+      processUploadQueue().catch(() => {});
+      registerBackgroundSync().catch(() => {});
     } catch (err) {
       setState({ phase: 'error', message: String(err) });
     }
