@@ -454,9 +454,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Contact
 
-Built by [Your name] — [your email] — [your GitHub]
-
-For NGO partnership and integration enquiries: [email]
+Built by Ritu Dey — ritzraven1234@gmail.com — https://github.com/RitzRaven19
 
 For responsible security disclosure: See [SECURITY.md](SECURITY.md)
 
