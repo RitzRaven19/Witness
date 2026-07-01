@@ -20,6 +20,9 @@ importers:
       '@witness/crypto-core':
         specifier: workspace:*
         version: link:../../packages/crypto-core
+      '@witness/lora-dtn':
+        specifier: workspace:*
+        version: link:../../packages/lora-dtn
       '@witness/offline-map':
         specifier: workspace:*
         version: link:../../packages/offline-map

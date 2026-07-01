@@ -9,9 +9,10 @@ import {
   appendEvent,
 } from '@witness/crypto-core';
 import { addEvidence, storeBlob } from '../store/evidenceStore';
+import { loraStore } from '../store/loraStore';
 import { processUploadQueue, registerBackgroundSync } from '../store/uploadQueue';
 import { stripMetadata } from '../utils/stripMetadata';
-import type { EvidenceType } from '../store/db';
+import type { EvidenceRecord, EvidenceType } from '../store/db';
 
 export type CaptureState =
   | { phase: 'idle' }
@@ -51,7 +52,7 @@ export function useCapture(onSaved: () => void) {
       log = await appendEvent(log, 'encrypted', { algorithm: 'AES-256-GCM' });
       log = await appendEvent(log, 'queued');
 
-      await addEvidence({
+      const record: EvidenceRecord = {
         id,
         type,
         hash,
@@ -61,7 +62,8 @@ export function useCapture(onSaved: () => void) {
         sizeBytes: buffer.byteLength,
         status: 'queued',
         custodyLog: log,
-      });
+      };
+      await addEvidence(record);
 
       setState({ phase: 'done', hash, type });
       onSaved();
@@ -69,6 +71,9 @@ export function useCapture(onSaved: () => void) {
       // the browser can retry if the connection arrives after the tab closes.
       processUploadQueue().catch(() => {});
       registerBackgroundSync().catch(() => {});
+      // Queue a compact signed HashReceipt for the LoRa DTN mesh — it broadcasts
+      // now if a companion device is connected, else waits in the queue.
+      loraStore.enqueueEvidenceReceipt(record).catch(() => {});
     } catch (err) {
       setState({ phase: 'error', message: String(err) });
     }

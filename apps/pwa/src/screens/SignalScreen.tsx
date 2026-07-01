@@ -1,24 +1,13 @@
 import { useState, useEffect } from 'react';
-
-type BleState = 'unavailable' | 'idle' | 'connecting' | 'connected' | 'error';
-
-interface BleDevice {
-  name: string;
-  id: string;
-}
+import { useLoraMesh } from '../hooks/useLoraMesh';
 
 export function SignalScreen() {
   const [sendLocation, setSendLocation] = useState(true);
   const [active, setActive] = useState<string | null>(null);
   const [coords, setCoords] = useState<{ lat: string; lng: string } | null>(null);
-  const [bleAvailable, setBleAvailable] = useState(false);
-  const [bleState, setBleState] = useState<BleState>('idle');
-  const [bleDevice, setBleDevice] = useState<BleDevice | null>(null);
-  const [bleError, setBleError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setBleAvailable('bluetooth' in navigator);
-  }, []);
+  const { status, serialAvailable, bleAvailable, connect, disconnect } = useLoraMesh();
+  const anyTransport = serialAvailable || bleAvailable;
 
   useEffect(() => {
     if (!sendLocation) { setCoords(null); return; }
@@ -31,36 +20,6 @@ export function SignalScreen() {
       { enableHighAccuracy: true, timeout: 8_000, maximumAge: 60_000 },
     );
   }, [sendLocation]);
-
-  async function pairDevice() {
-    if (!bleAvailable) return;
-    setBleState('connecting');
-    setBleError(null);
-    try {
-      const device = await (navigator as Navigator & {
-        bluetooth: { requestDevice(opts: object): Promise<{ id: string; name?: string }> }
-      }).bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: ['generic_access'],
-      });
-      setBleDevice({ id: device.id, name: device.name ?? 'Unknown Device' });
-      setBleState('connected');
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'NotFoundError') {
-        // user cancelled chooser — go back to idle
-        setBleState('idle');
-      } else {
-        setBleError(err instanceof Error ? err.message : 'Connection failed');
-        setBleState('error');
-      }
-    }
-  }
-
-  function disconnectDevice() {
-    setBleDevice(null);
-    setBleState('idle');
-    setBleError(null);
-  }
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d] overflow-y-auto">
@@ -87,53 +46,82 @@ export function SignalScreen() {
         </div>
       </div>
 
-      {/* BLE / LoRa status */}
+      {/* LoRa DTN mesh companion */}
       <div className="mx-4 mb-4 bg-[#111] border border-[#1e1e1e] p-4">
         <h3 className="text-[10px] text-[#00ff33] font-bold tracking-[0.2em] uppercase mb-3">LoRa Companion</h3>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${
-              bleState === 'connected'   ? 'bg-[#00ff33] animate-pulse' :
-              bleState === 'connecting'  ? 'bg-[#b8860b] animate-pulse' :
-              bleState === 'error'       ? 'bg-[#cc4444]' :
-              bleAvailable               ? 'bg-gray-600' : 'bg-[#333]'
+              status.conn === 'connected'  ? 'bg-[#00ff33] animate-pulse' :
+              status.conn === 'connecting' ? 'bg-[#b8860b] animate-pulse' :
+              status.conn === 'error'      ? 'bg-[#cc4444]' :
+              anyTransport                 ? 'bg-gray-600' : 'bg-[#333]'
             }`}/>
             <span className="text-[11px] text-gray-300 tracking-widest">
-              {bleState === 'connected'  ? bleDevice?.name ?? 'DEVICE CONNECTED' :
-               bleState === 'connecting' ? 'SCANNING...' :
-               bleState === 'error'      ? 'CONNECTION FAILED' :
-               bleAvailable             ? 'BLUETOOTH READY' : 'BLUETOOTH UNAVAILABLE'}
+              {status.conn === 'connected'  ? status.deviceLabel ?? 'DEVICE CONNECTED' :
+               status.conn === 'connecting' ? 'CONNECTING...' :
+               status.conn === 'error'      ? 'CONNECTION FAILED' :
+               anyTransport                 ? 'READY TO PAIR' : 'NO TRANSPORT'}
             </span>
           </div>
-          {bleState === 'connected' ? (
+          {status.conn === 'connected' ? (
             <button
-              onClick={disconnectDevice}
+              onClick={() => disconnect()}
               className="text-[10px] text-gray-500 tracking-widest border border-[#333] px-2 py-1 hover:border-[#cc4444] hover:text-[#cc4444] transition-colors"
             >
               DISCONNECT
             </button>
           ) : (
-            <button
-              onClick={pairDevice}
-              disabled={!bleAvailable || bleState === 'connecting'}
-              className={`text-[10px] tracking-widest border px-2 py-1 transition-colors ${
-                bleAvailable && bleState !== 'connecting'
-                  ? 'border-[#00ff33]/50 text-[#00ff33] hover:bg-[#00ff33]/10'
-                  : 'border-[#333] text-gray-600 cursor-not-allowed'
-              }`}
-            >
-              {bleState === 'connecting' ? 'PAIRING...' : 'PAIR DEVICE'}
-            </button>
+            <div className="flex gap-2">
+              {bleAvailable && (
+                <button
+                  onClick={() => connect('ble')}
+                  disabled={status.conn === 'connecting'}
+                  className="text-[10px] tracking-widest border px-2 py-1 transition-colors border-[#00ff33]/50 text-[#00ff33] hover:bg-[#00ff33]/10 disabled:border-[#333] disabled:text-gray-600 disabled:cursor-not-allowed"
+                >
+                  BLE
+                </button>
+              )}
+              {serialAvailable && (
+                <button
+                  onClick={() => connect('serial')}
+                  disabled={status.conn === 'connecting'}
+                  className="text-[10px] tracking-widest border px-2 py-1 transition-colors border-[#00ff33]/50 text-[#00ff33] hover:bg-[#00ff33]/10 disabled:border-[#333] disabled:text-gray-600 disabled:cursor-not-allowed"
+                >
+                  USB-C
+                </button>
+              )}
+            </div>
           )}
         </div>
-        {bleError && (
-          <p className="mt-2 text-[10px] text-[#cc4444] tracking-wide">{bleError}</p>
+
+        {/* Mesh queue telemetry */}
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="bg-[#0d0d0d] border border-[#1e1e1e] p-2 text-center">
+            <div className="text-[8px] text-gray-600 tracking-widest mb-0.5">QUEUED</div>
+            <div className="text-[#00ff33] text-[15px] font-bold tabular-nums">{status.pending}</div>
+          </div>
+          <div className="bg-[#0d0d0d] border border-[#1e1e1e] p-2 text-center">
+            <div className="text-[8px] text-gray-600 tracking-widest mb-0.5">RELAYED</div>
+            <div className="text-gray-300 text-[15px] font-bold tabular-nums">{status.relayed}</div>
+          </div>
+          <div className="bg-[#0d0d0d] border border-[#1e1e1e] p-2 text-center">
+            <div className="text-[8px] text-gray-600 tracking-widest mb-0.5">DELIVERED</div>
+            <div className="text-gray-300 text-[15px] font-bold tabular-nums">{status.delivered}</div>
+          </div>
+        </div>
+
+        {status.lastError && (
+          <p className="mt-2 text-[10px] text-[#cc4444] tracking-wide">{status.lastError}</p>
         )}
-        {!bleAvailable && (
+        {!anyTransport && (
           <p className="mt-2 text-[10px] text-gray-600 tracking-wide">
-            Web Bluetooth not supported in this browser. LoRa mesh requires pairing.
+            Web Serial / Bluetooth not supported in this browser. LoRa mesh needs a companion board.
           </p>
         )}
+        <p className="mt-2 text-[9px] text-gray-600 tracking-wide leading-relaxed">
+          Evidence receipts hop device-to-device over LoRa until a connected node forwards them. Only the signed hash travels — never the media.
+        </p>
       </div>
 
       {/* Signal cards */}

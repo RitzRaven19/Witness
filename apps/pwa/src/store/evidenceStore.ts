@@ -1,4 +1,5 @@
 import { getDb, closeDb, type EvidenceRecord, type EvidenceStatus } from './db';
+import { resetDeviceKeyCache } from './deviceKey';
 
 export async function addEvidence(record: EvidenceRecord): Promise<void> {
   const db = await getDb();
@@ -41,6 +42,8 @@ export async function purgeAll(): Promise<void> {
   await deleteDb('witness');          // keys, evidence
   await deleteDb('witness-map');      // Plane C resource bundles
   await deleteDb('witness-lora-dtn'); // LoRa DTN queue + dedup history
+  await deleteDb('witness-keys');     // device signing key
+  resetDeviceKeyCache();              // drop in-memory device key after wipe
 
   // 2. Wipe OPFS (encrypted blobs + any future offline-map tile cache)
   try {
