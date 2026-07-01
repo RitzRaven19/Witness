@@ -434,7 +434,6 @@ AGPL-3.0 for non-commercial and humanitarian use.
 
 This project uses [WorldMonitor](https://github.com/koala73/worldmonitor) (AGPL-3.0) for the conflict intelligence layer.
 
-For commercial licensing enquiries, contact [your email].
 
 ---
 
