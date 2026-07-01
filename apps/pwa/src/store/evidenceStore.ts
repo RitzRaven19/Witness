@@ -1,4 +1,4 @@
-import { getDb, type EvidenceRecord, type EvidenceStatus } from './db';
+import { getDb, closeDb, type EvidenceRecord, type EvidenceStatus } from './db';
 
 export async function addEvidence(record: EvidenceRecord): Promise<void> {
   const db = await getDb();
@@ -28,17 +28,36 @@ export async function getQueueCount(): Promise<number> {
 }
 
 export async function purgeAll(): Promise<void> {
-  // 1. Wipe IndexedDB
-  const db = await getDb();
-  await db.clear('evidence');
+  // 1. Close and delete the IndexedDB databases (evidence + offline-map resource bundles)
+  await getDb(); // ensure it was opened at least once before closing
+  closeDb();
+  const deleteDb = (name: string) =>
+    new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(name);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();   // best-effort — continue even if blocked
+      req.onblocked = () => resolve(); // another tab has it open; will delete on close
+    });
+  await deleteDb('witness');      // keys, evidence
+  await deleteDb('witness-map');  // Plane C resource bundles
 
-  // 2. Wipe OPFS encrypted blobs
+  // 2. Wipe OPFS (encrypted blobs + any future offline-map tile cache)
   try {
     const root = await navigator.storage.getDirectory();
-    await root.removeEntry('evidence', { recursive: true });
-  } catch {
-    // Directory may not exist yet — that's fine
+    // Remove all known Witness directories
+    for (const dir of ['evidence', 'map-tiles']) {
+      try { await root.removeEntry(dir, { recursive: true }); } catch { /* ok */ }
+    }
+  } catch { /* OPFS unavailable */ }
+
+  // 3. Delete all service-worker caches (precache + runtime)
+  if ('caches' in self) {
+    const names = await caches.keys();
+    await Promise.all(names.map(n => caches.delete(n)));
   }
+
+  // 4. Clear sessionStorage
+  try { sessionStorage.clear(); } catch { /* ok */ }
 }
 
 // Store an encrypted blob in OPFS at evidence/{id}.enc

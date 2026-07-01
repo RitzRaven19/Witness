@@ -37,3 +37,9 @@ export async function getDb(): Promise<IDBPDatabase<WitnessDB>> {
   });
   return _db;
 }
+
+/** Close the current connection and reset the cached reference. Call before deleting the DB. */
+export function closeDb(): void {
+  _db?.close();
+  _db = null;
+}
