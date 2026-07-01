@@ -101,6 +101,28 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.19.15)(terser@5.46.1)
 
+  packages/lora-dtn:
+    dependencies:
+      '@witness/crypto-core':
+        specifier: workspace:*
+        version: link:../crypto-core
+      idb:
+        specifier: ^8.0.0
+        version: 8.0.3
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.15
+      fake-indexeddb:
+        specifier: ^6.0.0
+        version: 6.2.5
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.19.15)(terser@5.46.1)
+
   packages/offline-map:
     dependencies:
       '@witness/crypto-core':

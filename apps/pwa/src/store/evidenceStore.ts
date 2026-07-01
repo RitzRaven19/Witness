@@ -38,8 +38,9 @@ export async function purgeAll(): Promise<void> {
       req.onerror = () => resolve();   // best-effort — continue even if blocked
       req.onblocked = () => resolve(); // another tab has it open; will delete on close
     });
-  await deleteDb('witness');      // keys, evidence
-  await deleteDb('witness-map');  // Plane C resource bundles
+  await deleteDb('witness');          // keys, evidence
+  await deleteDb('witness-map');      // Plane C resource bundles
+  await deleteDb('witness-lora-dtn'); // LoRa DTN queue + dedup history
 
   // 2. Wipe OPFS (encrypted blobs + any future offline-map tile cache)
   try {
