@@ -164,3 +164,52 @@ export async function reseedDemoResources(
     store.close();
   }
 }
+
+/** All currently-active resources from verified bundles in the store. */
+export async function getStoredResources(): Promise<ResourceLocation[]> {
+  const store = await MapStore.open();
+  try {
+    return await store.getActiveResources();
+  } finally {
+    store.close();
+  }
+}
+
+export interface ImportResult {
+  ok: boolean;
+  count: number;
+  error?: string;
+}
+
+/**
+ * Ingest a signed ResourceBundle scanned from a QR code (or pasted). The payload
+ * is JSON of `{ bundle, trust }` — the NGO-signed bundle plus the publisher trust
+ * bundle to verify it against. The bundle is verified (hybrid signature + expiry)
+ * before it is stored; invalid bundles are rejected. On success returns the total
+ * number of active resources now in the store.
+ */
+export async function importBundleJson(json: string): Promise<ImportResult> {
+  let parsed: { bundle?: ResourceBundle; trust?: TrustBundle };
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return { ok: false, count: 0, error: 'Not valid bundle data' };
+  }
+  const bundle = parsed.bundle;
+  const trust = parsed.trust;
+  if (!bundle || !trust) {
+    return { ok: false, count: 0, error: 'Missing bundle or trust info' };
+  }
+
+  const store = await MapStore.open();
+  try {
+    await store.putBundle(bundle, trust); // throws on verification failure
+    const resources = await store.getActiveResources();
+    return { ok: true, count: resources.length };
+  } catch {
+    // Never surface verification details to the user (avoids leaking trust infra).
+    return { ok: false, count: 0, error: 'Bundle rejected — signature or expiry invalid' };
+  } finally {
+    store.close();
+  }
+}

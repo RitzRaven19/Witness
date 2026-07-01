@@ -6,8 +6,31 @@ export function SignalScreen() {
   const [active, setActive] = useState<string | null>(null);
   const [coords, setCoords] = useState<{ lat: string; lng: string } | null>(null);
 
-  const { status, serialAvailable, bleAvailable, connect, disconnect } = useLoraMesh();
+  const {
+    status, serialAvailable, bleAvailable, connect, disconnect,
+    setMeshKey, getMeshKeyHex, setIngestUrl, getIngestUrl,
+  } = useLoraMesh();
   const anyTransport = serialAvailable || bleAvailable;
+
+  const [showConfig, setShowConfig] = useState(false);
+  const [meshKeyInput, setMeshKeyInput] = useState('');
+  const [ingestInput, setIngestInput] = useState('');
+  const [configMsg, setConfigMsg] = useState<string | null>(null);
+
+  function applyMeshKey() {
+    try {
+      setMeshKey(meshKeyInput);
+      setMeshKeyInput('');
+      setConfigMsg('Mesh key updated');
+    } catch (err) {
+      setConfigMsg(err instanceof Error ? err.message : 'Invalid mesh key');
+    }
+  }
+
+  function applyIngestUrl() {
+    setIngestUrl(ingestInput || null);
+    setConfigMsg(ingestInput ? 'Ingestion endpoint set' : 'Ingestion endpoint cleared');
+  }
 
   useEffect(() => {
     if (!sendLocation) { setCoords(null); return; }
@@ -122,6 +145,46 @@ export function SignalScreen() {
         <p className="mt-2 text-[9px] text-gray-600 tracking-wide leading-relaxed">
           Evidence receipts hop device-to-device over LoRa until a connected node forwards them. Only the signed hash travels — never the media.
         </p>
+
+        {/* Mesh provisioning */}
+        <button
+          onClick={() => setShowConfig((v) => !v)}
+          className="mt-3 w-full flex items-center justify-between text-[9px] text-gray-500 tracking-widest border-t border-[#1e1e1e] pt-2"
+        >
+          <span>MESH CONFIG · KEY {status.meshKeyFp}… · {status.ingestConfigured ? 'INGEST SET' : 'NO INGEST'}</span>
+          <span>{showConfig ? '▲' : '▼'}</span>
+        </button>
+        {showConfig && (
+          <div className="mt-2 flex flex-col gap-2">
+            <div>
+              <div className="text-[8px] text-gray-600 tracking-widest mb-1">SHARED MESH KEY (64 HEX)</div>
+              <div className="flex gap-1.5">
+                <input
+                  value={meshKeyInput}
+                  onChange={(e) => setMeshKeyInput(e.target.value)}
+                  placeholder={getMeshKeyHex()}
+                  spellCheck={false}
+                  className="flex-1 min-w-0 bg-[#0d0d0d] border border-[#1e1e1e] px-2 py-1.5 text-[10px] text-gray-300 font-mono tracking-tight focus:border-[#00ff33]/50 outline-none"
+                />
+                <button onClick={applyMeshKey} className="text-[9px] tracking-widest border border-[#00ff33]/50 text-[#00ff33] px-2 hover:bg-[#00ff33]/10">SET</button>
+              </div>
+            </div>
+            <div>
+              <div className="text-[8px] text-gray-600 tracking-widest mb-1">INGESTION ENDPOINT URL</div>
+              <div className="flex gap-1.5">
+                <input
+                  value={ingestInput}
+                  onChange={(e) => setIngestInput(e.target.value)}
+                  placeholder={getIngestUrl() ?? 'https://…/ingest'}
+                  spellCheck={false}
+                  className="flex-1 min-w-0 bg-[#0d0d0d] border border-[#1e1e1e] px-2 py-1.5 text-[10px] text-gray-300 font-mono tracking-tight focus:border-[#00ff33]/50 outline-none"
+                />
+                <button onClick={applyIngestUrl} className="text-[9px] tracking-widest border border-[#00ff33]/50 text-[#00ff33] px-2 hover:bg-[#00ff33]/10">SET</button>
+              </div>
+            </div>
+            {configMsg && <p className="text-[9px] text-[#00ff33]/70 tracking-wide">{configMsg}</p>}
+          </div>
+        )}
       </div>
 
       {/* Signal cards */}

@@ -9,7 +9,8 @@ import {
   type ResourceStatus,
   type ResourceType,
 } from '@witness/offline-map';
-import { loadMapResources, reseedDemoResources } from '../store/mapResources';
+import { loadMapResources, reseedDemoResources, getStoredResources, importBundleJson } from '../store/mapResources';
+import { QrScannerModal } from '../components/QrScannerModal';
 
 const CARTO_DARK = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
@@ -109,6 +110,25 @@ export function TacticalMapScreen() {
   const [showResources, setShowResources] = useState(true);
   const [resources, setResources] = useState<ResourceLocation[]>([]);
   const [selectedResource, setSelectedResource] = useState<ResourceLocation | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function handleImport(data: string) {
+    setShowScanner(false);
+    const res = await importBundleJson(data);
+    if (res.ok) {
+      const stored = await getStoredResources();
+      setResources(stored);
+      setImportMsg({ ok: true, text: `Bundle verified · ${res.count} resources` });
+      const first = stored[0];
+      if (first && mapRef.current) {
+        mapRef.current.flyTo({ center: [first.lon, first.lat], zoom: 13, duration: 1000 });
+      }
+    } else {
+      setImportMsg({ ok: false, text: res.error ?? 'Import failed' });
+    }
+    setTimeout(() => setImportMsg(null), 4000);
+  }
 
   // (Re)draw markers whenever the verified resource set or visibility changes.
   useEffect(() => {
@@ -241,6 +261,12 @@ export function TacticalMapScreen() {
             RESOURCES {showResources ? 'ON' : 'OFF'}
           </button>
           <button
+            onClick={() => setShowScanner(true)}
+            className="text-[9px] font-bold tracking-widest px-2 py-1 border border-[#333] text-gray-400 hover:border-[#00ff33]/50 hover:text-[#00ff33] transition-colors"
+          >
+            IMPORT
+          </button>
+          <button
             onClick={flyHome}
             className="flex items-center gap-1.5 bg-[#b8860b] hover:bg-[#d4a017] px-2.5 py-1.5 transition-colors"
           >
@@ -370,7 +396,28 @@ export function TacticalMapScreen() {
             onClick={() => setSelectedResource(null)}
           />
         )}
+
+        {/* Bundle import result toast */}
+        {importMsg && (
+          <div
+            className={`absolute top-2 left-1/2 -translate-x-1/2 z-30 px-3 py-2 border text-[10px] font-bold tracking-widest ${
+              importMsg.ok
+                ? 'bg-[#0d1f10] border-[#00ff33]/60 text-[#00ff33]'
+                : 'bg-[#1a0505] border-[#cc4444] text-[#cc6666]'
+            }`}
+          >
+            {importMsg.text}
+          </div>
+        )}
       </div>
+
+      {/* QR scanner for NGO ResourceBundle import */}
+      {showScanner && (
+        <QrScannerModal
+          onClose={() => setShowScanner(false)}
+          onResult={(data) => { void handleImport(data); }}
+        />
+      )}
     </div>
   );
 }

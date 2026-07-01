@@ -2,19 +2,21 @@
  * LoRa DTN mesh runtime for the PWA.
  *
  * A small singleton that owns the persistent DTNQueue and the (optional)
- * companion-device transport, drives the epidemic receive/relay loop, and
- * turns captured evidence into signed HashReceipts queued for broadcast.
+ * companion-device transport, drives the epidemic receive/relay loop, turns
+ * captured evidence into signed HashReceipts, and — when this node has
+ * connectivity — forwards receipts to the ingestion endpoint.
  *
  * React subscribes via useLoraMesh; capture calls enqueueEvidenceReceipt.
  *
- * Mesh key note: the HMAC pre-shared key is generated per-device and stored in
- * localStorage for this build. In a real deployment every node in a mesh must
- * share the same key (provisioned by the NGO), otherwise relays reject each
- * other's frames.
+ * Mesh key: the HMAC pre-shared key is shared across nodes. Out of the box every
+ * install uses DEFAULT_MESH_KEY_HEX (like a default Meshtastic channel) so nodes
+ * can relay immediately; an operation provisions its own NGO key via setMeshKey.
  */
 
 import {
   DTNQueue,
+  PayloadType,
+  decodePacket,
   enqueueHashReceipt,
   rebroadcastDelayMs,
   SerialTransport,
@@ -27,16 +29,25 @@ import { getDeviceKey } from './deviceKey';
 import type { EvidenceRecord } from './db';
 
 const MESH_KEY_STORAGE = 'witness_mesh_key';
+const INGEST_URL_STORAGE = 'witness_ingest_url';
 
-function loadMeshKey(): Uint8Array {
+/**
+ * Published default mesh key so freshly-installed nodes can relay to one another.
+ * NOT secret — replace with an NGO-provisioned key (setMeshKey) for an operation
+ * that needs its mesh isolated from the public default.
+ */
+export const DEFAULT_MESH_KEY_HEX =
+  '5749544e4553530000006d6573680000006b6579000000006465666175000001';
+
+const HEX64 = /^[0-9a-fA-F]{64}$/;
+
+function loadMeshKeyHex(): string {
   let hex = localStorage.getItem(MESH_KEY_STORAGE);
-  if (!hex || hex.length !== 64) {
-    const k = new Uint8Array(32);
-    crypto.getRandomValues(k);
-    hex = bytesToHex(k);
+  if (!hex || !HEX64.test(hex)) {
+    hex = DEFAULT_MESH_KEY_HEX;
     localStorage.setItem(MESH_KEY_STORAGE, hex);
   }
-  return hexToBytes(hex);
+  return hex.toLowerCase();
 }
 
 export type LoraConnState = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -50,8 +61,12 @@ export interface LoraStatus {
   pending: number;
   /** Count of frames this node relayed onward this session. */
   relayed: number;
-  /** Count of frames this node forwarded upstream (had connectivity) this session. */
+  /** Count of receipts this node forwarded to the ingestion endpoint this session. */
   delivered: number;
+  /** Short fingerprint (first 8 hex) of the active mesh key, for the UI. */
+  meshKeyFp: string;
+  /** Whether an ingestion endpoint URL is configured. */
+  ingestConfigured: boolean;
   lastError: string | null;
 }
 
@@ -61,7 +76,9 @@ class LoraStore {
   private queue: DTNQueue | null = null;
   private transport: LoRaTransport | null = null;
   private unsubscribeFrames: (() => void) | null = null;
-  private readonly meshKey = loadMeshKey();
+  private meshKeyHex = loadMeshKeyHex();
+  private meshKey = hexToBytes(this.meshKeyHex);
+  private ingestUrl = localStorage.getItem(INGEST_URL_STORAGE);
   private readonly listeners = new Set<Listener>();
 
   private status: LoraStatus = {
@@ -71,8 +88,18 @@ class LoraStore {
     pending: 0,
     relayed: 0,
     delivered: 0,
+    meshKeyFp: this.meshKeyHex.slice(0, 8),
+    ingestConfigured: false,
     lastError: null,
   };
+
+  constructor() {
+    this.status.ingestConfigured = !!this.ingestUrl;
+    // Deliver queued receipts whenever connectivity returns.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => void this.flushDeliveries());
+    }
+  }
 
   getStatus(): LoraStatus {
     return this.status;
@@ -81,7 +108,6 @@ class LoraStore {
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
     listener(this.status);
-    // Surface the persisted queue depth even before a device connects.
     void this.refreshPending();
     return () => this.listeners.delete(listener);
   }
@@ -89,6 +115,68 @@ class LoraStore {
   private emit(patch: Partial<LoraStatus>): void {
     this.status = { ...this.status, ...patch };
     for (const l of this.listeners) l(this.status);
+  }
+
+  // ── Mesh key provisioning ────────────────────────────────────────────────
+  getMeshKeyHex(): string {
+    return this.meshKeyHex;
+  }
+
+  /** Provision a shared 64-hex mesh key (e.g. NGO-issued). Throws if malformed. */
+  setMeshKey(hex: string): void {
+    const clean = hex.trim().toLowerCase();
+    if (!HEX64.test(clean)) throw new Error('Mesh key must be 64 hex characters');
+    this.meshKeyHex = clean;
+    this.meshKey = hexToBytes(clean);
+    localStorage.setItem(MESH_KEY_STORAGE, clean);
+    this.emit({ meshKeyFp: clean.slice(0, 8) });
+  }
+
+  // ── Ingestion endpoint ───────────────────────────────────────────────────
+  getIngestUrl(): string | null {
+    return this.ingestUrl;
+  }
+
+  setIngestUrl(url: string | null): void {
+    const clean = url?.trim() || null;
+    this.ingestUrl = clean;
+    if (clean) localStorage.setItem(INGEST_URL_STORAGE, clean);
+    else localStorage.removeItem(INGEST_URL_STORAGE);
+    this.emit({ ingestConfigured: !!clean });
+    void this.flushDeliveries();
+  }
+
+  /** POST a receipt payload to the ingestion endpoint. Returns true on 2xx. */
+  private async deliverPayload(payload: Uint8Array): Promise<boolean> {
+    if (!this.ingestUrl || !navigator.onLine) return false;
+    try {
+      const res = await fetch(this.ingestUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: payload as unknown as BodyInit,
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Forward every queued HashReceipt to the ingestion endpoint (if online and
+   * configured), marking each delivered on success so it stops rebroadcasting.
+   */
+  async flushDeliveries(): Promise<void> {
+    if (!this.ingestUrl || !navigator.onLine) return;
+    const q = await this.getQueue();
+    for (const frame of await q.pending()) {
+      const d = decodePacket(frame);
+      if (d.payloadType !== PayloadType.HashReceipt) continue;
+      if (await this.deliverPayload(d.payload)) {
+        await q.markDelivered(bytesToHex(d.packetId));
+        this.emit({ delivered: this.status.delivered + 1 });
+      }
+    }
+    await this.refreshPending();
   }
 
   private async getQueue(): Promise<DTNQueue> {
@@ -112,7 +200,6 @@ class LoraStore {
       await transport.connect();
     } catch (err) {
       const e = err as Error;
-      // User dismissing the chooser is not an error — return to idle.
       if (e.name === 'NotFoundError') {
         this.emit({ conn: 'disconnected', kind: null });
       } else {
@@ -122,9 +209,7 @@ class LoraStore {
     }
 
     this.transport = transport;
-    this.unsubscribeFrames = transport.onFrame((frame) => {
-      void this.onFrame(frame);
-    });
+    this.unsubscribeFrames = transport.onFrame((frame) => void this.onFrame(frame));
     this.emit({
       conn: 'connected',
       kind,
@@ -132,6 +217,7 @@ class LoraStore {
     });
 
     await this.flushPending();
+    await this.flushDeliveries();
     await this.refreshPending();
   }
 
@@ -160,7 +246,7 @@ class LoraStore {
   private async onFrame(frame: Uint8Array): Promise<void> {
     const q = await this.getQueue();
     const res = await q.processIncoming(frame, this.meshKey, {
-      hasConnectivity: navigator.onLine,
+      hasConnectivity: navigator.onLine && !!this.ingestUrl,
     });
     if (res.action !== 'accept') return;
 
@@ -169,14 +255,10 @@ class LoraStore {
 
     if (res.relayFrame && this.transport) {
       const toSend = res.relayFrame;
-      setTimeout(() => {
-        this.transport?.send(toSend).catch(() => {});
-      }, rebroadcastDelayMs());
+      setTimeout(() => void this.transport?.send(toSend).catch(() => {}), rebroadcastDelayMs());
     }
 
-    if (res.deliver) {
-      // This node has connectivity — the payload would be POSTed to the
-      // ingestion endpoint here. Marking delivered stops rebroadcasting.
+    if (res.deliver && (await this.deliverPayload(res.payload))) {
       await q.markDelivered(res.packetIdHex);
       this.emit({ delivered: this.status.delivered + 1 });
       await this.refreshPending();
@@ -186,8 +268,8 @@ class LoraStore {
   /**
    * Sign a captured evidence record's media hash and queue the resulting
    * HashReceipt for the mesh. Broadcasts immediately if a device is connected;
-   * otherwise it stays queued until one connects. Best-effort — never throws
-   * into the capture path.
+   * forwards upstream immediately if this node is online. Best-effort — never
+   * throws into the capture path.
    */
   async enqueueEvidenceReceipt(ev: EvidenceRecord): Promise<void> {
     const q = await this.getQueue();
@@ -211,6 +293,7 @@ class LoraStore {
 
     await enqueueHashReceipt(receipt, this.meshKey, q, this.transport ?? undefined);
     await this.refreshPending();
+    void this.flushDeliveries();
   }
 }
 
