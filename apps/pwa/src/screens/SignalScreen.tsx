@@ -1,8 +1,66 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+type BleState = 'unavailable' | 'idle' | 'connecting' | 'connected' | 'error';
+
+interface BleDevice {
+  name: string;
+  id: string;
+}
 
 export function SignalScreen() {
   const [sendLocation, setSendLocation] = useState(true);
   const [active, setActive] = useState<string | null>(null);
+  const [coords, setCoords] = useState<{ lat: string; lng: string } | null>(null);
+  const [bleAvailable, setBleAvailable] = useState(false);
+  const [bleState, setBleState] = useState<BleState>('idle');
+  const [bleDevice, setBleDevice] = useState<BleDevice | null>(null);
+  const [bleError, setBleError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBleAvailable('bluetooth' in navigator);
+  }, []);
+
+  useEffect(() => {
+    if (!sendLocation) { setCoords(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setCoords({
+        lat: `${Math.abs(pos.coords.latitude).toFixed(4)}° ${pos.coords.latitude >= 0 ? 'N' : 'S'}`,
+        lng: `${Math.abs(pos.coords.longitude).toFixed(4)}° ${pos.coords.longitude >= 0 ? 'E' : 'W'}`,
+      }),
+      () => setCoords(null),
+      { enableHighAccuracy: true, timeout: 8_000, maximumAge: 60_000 },
+    );
+  }, [sendLocation]);
+
+  async function pairDevice() {
+    if (!bleAvailable) return;
+    setBleState('connecting');
+    setBleError(null);
+    try {
+      const device = await (navigator as Navigator & {
+        bluetooth: { requestDevice(opts: object): Promise<{ id: string; name?: string }> }
+      }).bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ['generic_access'],
+      });
+      setBleDevice({ id: device.id, name: device.name ?? 'Unknown Device' });
+      setBleState('connected');
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'NotFoundError') {
+        // user cancelled chooser — go back to idle
+        setBleState('idle');
+      } else {
+        setBleError(err instanceof Error ? err.message : 'Connection failed');
+        setBleState('error');
+      }
+    }
+  }
+
+  function disconnectDevice() {
+    setBleDevice(null);
+    setBleState('idle');
+    setBleError(null);
+  }
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d] overflow-y-auto">
@@ -29,6 +87,55 @@ export function SignalScreen() {
         </div>
       </div>
 
+      {/* BLE / LoRa status */}
+      <div className="mx-4 mb-4 bg-[#111] border border-[#1e1e1e] p-4">
+        <h3 className="text-[10px] text-[#00ff33] font-bold tracking-[0.2em] uppercase mb-3">LoRa Companion</h3>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${
+              bleState === 'connected'   ? 'bg-[#00ff33] animate-pulse' :
+              bleState === 'connecting'  ? 'bg-[#b8860b] animate-pulse' :
+              bleState === 'error'       ? 'bg-[#cc4444]' :
+              bleAvailable               ? 'bg-gray-600' : 'bg-[#333]'
+            }`}/>
+            <span className="text-[11px] text-gray-300 tracking-widest">
+              {bleState === 'connected'  ? bleDevice?.name ?? 'DEVICE CONNECTED' :
+               bleState === 'connecting' ? 'SCANNING...' :
+               bleState === 'error'      ? 'CONNECTION FAILED' :
+               bleAvailable             ? 'BLUETOOTH READY' : 'BLUETOOTH UNAVAILABLE'}
+            </span>
+          </div>
+          {bleState === 'connected' ? (
+            <button
+              onClick={disconnectDevice}
+              className="text-[10px] text-gray-500 tracking-widest border border-[#333] px-2 py-1 hover:border-[#cc4444] hover:text-[#cc4444] transition-colors"
+            >
+              DISCONNECT
+            </button>
+          ) : (
+            <button
+              onClick={pairDevice}
+              disabled={!bleAvailable || bleState === 'connecting'}
+              className={`text-[10px] tracking-widest border px-2 py-1 transition-colors ${
+                bleAvailable && bleState !== 'connecting'
+                  ? 'border-[#00ff33]/50 text-[#00ff33] hover:bg-[#00ff33]/10'
+                  : 'border-[#333] text-gray-600 cursor-not-allowed'
+              }`}
+            >
+              {bleState === 'connecting' ? 'PAIRING...' : 'PAIR DEVICE'}
+            </button>
+          )}
+        </div>
+        {bleError && (
+          <p className="mt-2 text-[10px] text-[#cc4444] tracking-wide">{bleError}</p>
+        )}
+        {!bleAvailable && (
+          <p className="mt-2 text-[10px] text-gray-600 tracking-wide">
+            Web Bluetooth not supported in this browser. LoRa mesh requires pairing.
+          </p>
+        )}
+      </div>
+
       {/* Signal cards */}
       <div className="px-4 flex flex-col gap-3 mb-5">
         {/* Silent Alert */}
@@ -40,9 +147,7 @@ export function SignalScreen() {
               : 'bg-[#111] border-[#1e1e1e] hover:border-[#00ff33]/30'
           }`}
         >
-          <div className={`w-12 h-12 flex items-center justify-center shrink-0 ${
-            active === 'silent' ? 'bg-[#00ff33]/20' : 'bg-[#1a1a1a]'
-          }`}>
+          <div className={`w-12 h-12 flex items-center justify-center shrink-0 ${active === 'silent' ? 'bg-[#00ff33]/20' : 'bg-[#1a1a1a]'}`}>
             <svg className="w-6 h-6 text-[#00ff33]" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6zM2.54 2.54L1.13 3.95C3.1 5.92 4.29 8.59 4.29 11.5c0 2.91-1.19 5.58-3.16 7.55l1.41 1.41C4.73 18.27 6.29 15.06 6.29 11.5c0-3.56-1.56-6.77-4.03-9.03L2.54 2.54z"/>
             </svg>
@@ -67,9 +172,7 @@ export function SignalScreen() {
               : 'bg-[#111] border-[#1e1e1e] hover:border-[#00ff33]/30'
           }`}
         >
-          <div className={`w-12 h-12 flex items-center justify-center shrink-0 ${
-            active === 'audio' ? 'bg-[#00ff33]/20' : 'bg-[#1a1a1a]'
-          }`}>
+          <div className={`w-12 h-12 flex items-center justify-center shrink-0 ${active === 'audio' ? 'bg-[#00ff33]/20' : 'bg-[#1a1a1a]'}`}>
             <svg className="w-6 h-6 text-[#00ff33]" fill="currentColor" viewBox="0 0 24 24">
               <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
             </svg>
@@ -115,7 +218,6 @@ export function SignalScreen() {
       <div className="mx-4 mb-4 bg-[#111] border border-[#1e1e1e] p-4">
         <h3 className="text-[10px] text-[#00ff33] font-bold tracking-[0.2em] uppercase mb-4">Protocol Configuration</h3>
 
-        {/* Send Location toggle */}
         <div className="flex items-start justify-between mb-3">
           <div>
             <div className="font-bold text-white tracking-widest text-[12px]">SEND LOCATION</div>
@@ -133,23 +235,32 @@ export function SignalScreen() {
           </button>
         </div>
 
-        {/* Coordinates */}
         {sendLocation && (
           <div className="flex gap-2 mb-4">
             <div className="flex-1 bg-[#0d0d0d] border border-[#1e1e1e] p-2.5">
               <div className="text-[9px] text-gray-600 tracking-widest mb-1">LAT:</div>
-              <div className="text-[#00ff33] text-[13px] font-bold tracking-widest">34.0522° N</div>
+              <div className="text-[#00ff33] text-[13px] font-bold tracking-widest">
+                {coords?.lat ?? '—'}
+              </div>
             </div>
             <div className="flex-1 bg-[#0d0d0d] border border-[#1e1e1e] p-2.5">
               <div className="text-[9px] text-gray-600 tracking-widest mb-1">LONG:</div>
-              <div className="text-[#00ff33] text-[13px] font-bold tracking-widest">118.2437° W</div>
+              <div className="text-[#00ff33] text-[13px] font-bold tracking-widest">
+                {coords?.lng ?? '—'}
+              </div>
             </div>
           </div>
         )}
 
-        {/* Initiate button */}
-        <button className="w-full bg-[#00aa22] hover:bg-[#00cc28] py-4 text-white font-bold tracking-[0.25em] text-[12px] transition-colors shadow-[0_0_12px_rgba(0,255,51,0.2)]">
-          INITIATE SIGNAL BURST
+        <button
+          disabled={!active}
+          className={`w-full py-4 font-bold tracking-[0.25em] text-[12px] transition-colors ${
+            active
+              ? 'bg-[#00aa22] hover:bg-[#00cc28] text-white shadow-[0_0_12px_rgba(0,255,51,0.2)]'
+              : 'bg-[#1a1a1a] text-gray-600 cursor-not-allowed'
+          }`}
+        >
+          {active ? `INITIATE ${active.toUpperCase()} BURST` : 'SELECT SIGNAL TYPE'}
         </button>
       </div>
 

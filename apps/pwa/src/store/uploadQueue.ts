@@ -10,12 +10,17 @@
  */
 
 /// <reference types="vite/client" />
+import * as tus from 'tus-js-client';
 import { getDb } from './db';
 import { updateStatus } from './evidenceStore';
 import { appendEvent } from '@witness/crypto-core';
 
 const VAULT_ENDPOINT: string = import.meta.env.VITE_VAULT_ENDPOINT ?? '';
 const VAULT_KEY: string = import.meta.env.VITE_VAULT_KEY ?? '';
+// tus endpoint: prefer explicit override, otherwise derive from vault endpoint
+const TUS_ENDPOINT: string =
+  import.meta.env.VITE_TUS_ENDPOINT ||
+  (VAULT_ENDPOINT ? `${VAULT_ENDPOINT}/storage/v1/upload/resumable` : '');
 
 const MAX_RETRIES = 3;
 // Exponential backoff base: 5 s, 10 s, 20 s
@@ -30,13 +35,12 @@ let _running = false;
  */
 export async function processUploadQueue(): Promise<void> {
   if (_running) return;
-  if (!VAULT_ENDPOINT) return; // no vault configured — stay queued
+  if (!TUS_ENDPOINT) return; // no vault configured — stay queued
 
   _running = true;
   try {
     const db = await getDb();
     const queued = await db.getAllFromIndex('evidence', 'by_status', 'queued');
-    // Upload in capture order (oldest first)
     for (const record of queued) {
       await _attemptUpload(record.id, 1);
     }
@@ -53,37 +57,18 @@ async function _attemptUpload(id: string, attempt: number): Promise<void> {
   await updateStatus(id, 'uploading');
 
   try {
-    // Read encrypted blob from OPFS
     const root = await navigator.storage.getDirectory();
     const dir = await root.getDirectoryHandle('evidence');
     const fileHandle = await dir.getFileHandle(`${id}.enc`);
     const file = await fileHandle.getFile();
-    const body = await file.arrayBuffer();
 
-    const res = await fetch(`${VAULT_ENDPOINT}/functions/v1/evidence`, {
-      method: 'POST',
-      headers: {
-        'Content-Type':  'application/octet-stream',
-        'Authorization': `Bearer ${VAULT_KEY}`,
-        'X-Blob-Id':     id,
-        'X-Media-Hash':  record.hash,
-        'X-Media-Type':  record.type,
-        'X-Captured-At': String(record.capturedAt),
-        'X-IV':          record.ivHex,
-        // Key is NOT sent — vault stores ciphertext only; decryption key
-        // stays with the authorised investigator. See architecture §9.
-      },
-      body,
-    });
+    await _tusUpload(id, file, record.hash, record.type, record.capturedAt, record.ivHex);
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    // Append upload event to custody log and mark uploaded
     const tx = db.transaction('evidence', 'readwrite');
     const rec = await tx.store.get(id);
     if (rec) {
       rec.custodyLog = await appendEvent(rec.custodyLog, 'uploaded', {
-        vault: VAULT_ENDPOINT,
+        vault: TUS_ENDPOINT,
         respondedAt: String(Date.now()),
       });
       rec.status = 'uploaded';
@@ -100,6 +85,46 @@ async function _attemptUpload(id: string, attempt: number): Promise<void> {
       await updateStatus(id, 'failed');
     }
   }
+}
+
+function _tusUpload(
+  id: string,
+  file: File,
+  hash: string,
+  mediaType: string,
+  capturedAt: number,
+  ivHex: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const upload = new tus.Upload(file, {
+      endpoint: TUS_ENDPOINT,
+      retryDelays: null, // we handle retries ourselves
+      chunkSize: 6 * 1024 * 1024, // 6 MB chunks (Supabase Storage limit)
+      storeFingerprintForResuming: true,
+      headers: {
+        Authorization: `Bearer ${VAULT_KEY}`,
+      },
+      metadata: {
+        blobId: id,
+        mediaHash: hash,
+        mediaType,
+        capturedAt: String(capturedAt),
+        ivHex,
+        // decryption key is NOT sent — stays with authorised investigator (architecture §9)
+      },
+      onBeforeRequest(req) {
+        // x-upsert lets Supabase Storage overwrite a partial upload from a prior session
+        req.setHeader('x-upsert', 'true');
+      },
+      onError: reject,
+      onSuccess: () => resolve(),
+    });
+
+    upload.findPreviousUploads().then((previous) => {
+      if (previous.length > 0) upload.resumeFromPreviousUpload(previous[0]);
+      upload.start();
+    }).catch(reject);
+  });
 }
 
 function _sleep(ms: number): Promise<void> {

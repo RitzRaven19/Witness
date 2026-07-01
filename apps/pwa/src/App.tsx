@@ -3,6 +3,7 @@ import { processUploadQueue } from './store/uploadQueue';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { DesktopScreen } from './screens/DesktopScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { CaptureScreen } from './screens/CaptureScreen';
 import { TacticalCommsScreen } from './screens/TacticalCommsScreen';
 import { SignalScreen } from './screens/SignalScreen';
 import { TacticalVaultScreen } from './screens/TacticalVaultScreen';
@@ -10,7 +11,7 @@ import { TacticalMapScreen } from './screens/TacticalMapScreen';
 import { PurgeScreen } from './screens/PurgeScreen';
 import { DecoyScreen } from './screens/DecoyScreen';
 
-export type MobileTab = 'home' | 'comms' | 'signal' | 'vault' | 'map';
+export type MobileTab = 'home' | 'comms' | 'signal' | 'vault' | 'map' | 'capture';
 
 /** Returns the stored 4-digit PIN, creating one if it doesn't exist yet. */
 function getOrCreatePin(): string {
@@ -67,11 +68,12 @@ export function App() {
     <div className="flex flex-col h-dvh bg-[#0d0d0d] text-white overflow-hidden font-sentry">
       {/* Screen content */}
       <main className="flex-1 overflow-hidden relative">
-        {tab === 'home'   && <HomeScreen   onNavigate={setTab} onPurge={() => setShowPurge(true)} />}
-        {tab === 'comms'  && <TacticalCommsScreen />}
-        {tab === 'signal' && <SignalScreen />}
-        {tab === 'vault'  && <TacticalVaultScreen />}
-        {tab === 'map'    && <TacticalMapScreen />}
+        {tab === 'home'    && <HomeScreen onNavigate={setTab} onPurge={() => setShowPurge(true)} />}
+        {tab === 'capture' && <CaptureScreen onSaved={() => setTab('vault')} />}
+        {tab === 'comms'   && <TacticalCommsScreen />}
+        {tab === 'signal'  && <SignalScreen />}
+        {tab === 'vault'   && <TacticalVaultScreen />}
+        {tab === 'map'     && <TacticalMapScreen />}
 
         {/* Purge modal (absolute overlay) */}
         {showPurge && (
