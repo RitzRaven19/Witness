@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQrScanner } from '../hooks/useQrScanner';
+import { SequenceAssembler, type SequenceProgress } from '../utils/qrSequence';
 
 interface Props {
   onClose: () => void;
@@ -7,7 +8,34 @@ interface Props {
 }
 
 export function QrScannerModal({ onClose, onResult }: Props) {
-  const { videoRef, canvasRef, state, result, error, start, reset } = useQrScanner();
+  const assemblerRef = useRef(new SequenceAssembler());
+  const [progress, setProgress] = useState<SequenceProgress | null>(null);
+  const [assembled, setAssembled] = useState<string | null>(null);
+
+  // Multi-frame aware: plain QR codes complete immediately; WTN1 sequence
+  // frames accumulate until every part has been scanned.
+  const { videoRef, canvasRef, state, result, error, start, reset } = useQrScanner(
+    async (data) => {
+      if (!SequenceAssembler.isSequenceFrame(data)) return true;
+      try {
+        const res = await assemblerRef.current.push(data);
+        if (res.kind === 'progress') {
+          setProgress(res.progress);
+          return false;
+        }
+        if (res.kind === 'complete') {
+          setAssembled(res.text);
+          setProgress(res.progress);
+          return true;
+        }
+      } catch {
+        /* corrupt frame — keep scanning */
+      }
+      return false;
+    },
+  );
+
+  const payload = assembled ?? result;
 
   useEffect(() => {
     start();
@@ -15,11 +43,19 @@ export function QrScannerModal({ onClose, onResult }: Props) {
   }, [start, reset]);
 
   useEffect(() => {
-    if (result && onResult) onResult(result);
-  }, [result, onResult]);
+    if (state === 'found' && payload && onResult) onResult(payload);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, payload]);
 
   const copyResult = () => {
-    if (result) navigator.clipboard.writeText(result).catch(() => {});
+    if (payload) navigator.clipboard.writeText(payload).catch(() => {});
+  };
+
+  const scanAgain = () => {
+    assemblerRef.current.reset();
+    setProgress(null);
+    setAssembled(null);
+    void start();
   };
 
   return (
@@ -47,7 +83,7 @@ export function QrScannerModal({ onClose, onResult }: Props) {
             </svg>
             <p className="text-[#cc4444] font-bold tracking-widest text-[12px]">{error ?? 'CAMERA ERROR'}</p>
             <button
-              onClick={() => start()}
+              onClick={scanAgain}
               className="bg-[#1a1a1a] border border-[#333] px-4 py-2 text-white text-[11px] tracking-widest hover:bg-[#222]"
             >
               RETRY
@@ -58,9 +94,11 @@ export function QrScannerModal({ onClose, onResult }: Props) {
             <svg className="w-10 h-10 text-[#00ff33]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
-            <div className="text-[#00ff33] font-bold tracking-widest text-[11px]">QR CODE DETECTED</div>
+            <div className="text-[#00ff33] font-bold tracking-widest text-[11px]">
+              {assembled ? `SEQUENCE COMPLETE · ${progress?.total ?? '?'} FRAMES` : 'QR CODE DETECTED'}
+            </div>
             <div className="w-full bg-[#0a0a0a] border border-[#1a1a1a] p-3 max-h-40 overflow-y-auto">
-              <p className="text-white text-[12px] font-mono break-all text-left">{result}</p>
+              <p className="text-white text-[12px] font-mono break-all text-left">{payload}</p>
             </div>
             <div className="flex gap-3">
               <button
@@ -70,7 +108,7 @@ export function QrScannerModal({ onClose, onResult }: Props) {
                 COPY
               </button>
               <button
-                onClick={() => start()}
+                onClick={scanAgain}
                 className="bg-[#1a1a1a] border border-[#333] text-white text-[11px] tracking-widest px-4 py-2 hover:bg-[#222]"
               >
                 SCAN AGAIN
@@ -100,8 +138,17 @@ export function QrScannerModal({ onClose, onResult }: Props) {
                 <div className="absolute inset-x-2 top-0 h-0.5 bg-[#00ff33]/60 animate-[scan_2s_linear_infinite]"/>
               </div>
               <p className="text-[#00ff33]/70 text-[11px] tracking-widest">
-                {state === 'scanning' ? 'POINT AT QR CODE' : 'INITIALIZING...'}
+                {state !== 'scanning' ? 'INITIALIZING...' :
+                 progress ? `RECEIVING PART ${progress.have}/${progress.total} — KEEP SCANNING` :
+                 'POINT AT QR CODE'}
               </p>
+              {progress && (
+                <div className="flex gap-1 w-56">
+                  {Array.from({ length: progress.total }).map((_, i) => (
+                    <div key={i} className={`flex-1 h-1 ${i < progress.have ? 'bg-[#00ff33]' : 'bg-[#333]'}`}/>
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}

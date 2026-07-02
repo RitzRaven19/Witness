@@ -29,6 +29,25 @@ import {
 
 const HOUR = 60 * 60 * 1000;
 
+/**
+ * localStorage key holding the last verified { bundle, trust } JSON so the
+ * device can re-share it to nearby devices via QR sequence. Wiped on purge.
+ */
+export const SHARE_BUNDLE_STORAGE = 'witness_share_bundle';
+
+function saveShareable(bundle: ResourceBundle, trust: TrustBundle): void {
+  try {
+    localStorage.setItem(SHARE_BUNDLE_STORAGE, JSON.stringify({ bundle, trust }));
+  } catch {
+    /* storage full — sharing is best-effort */
+  }
+}
+
+/** The last verified { bundle, trust } JSON for device-to-device QR sharing. */
+export function getShareableBundleJson(): string | null {
+  return localStorage.getItem(SHARE_BUNDLE_STORAGE);
+}
+
 export interface LatLon {
   lat: number;
   lon: number;
@@ -137,6 +156,7 @@ export async function loadMapResources(
     if (resources.length === 0) {
       const { bundle, trust } = await buildDemoBundle(center);
       await store.putBundle(bundle, trust);
+      saveShareable(bundle, trust);
       resources = await store.getActiveResources();
     }
     return resources;
@@ -159,6 +179,7 @@ export async function reseedDemoResources(
     await store.purgeAll();
     const { bundle, trust } = await buildDemoBundle(center);
     await store.putBundle(bundle, trust);
+    saveShareable(bundle, trust);
     return store.getActiveResources();
   } finally {
     store.close();
@@ -204,6 +225,7 @@ export async function importBundleJson(json: string): Promise<ImportResult> {
   const store = await MapStore.open();
   try {
     await store.putBundle(bundle, trust); // throws on verification failure
+    saveShareable(bundle, trust);
     const resources = await store.getActiveResources();
     return { ok: true, count: resources.length };
   } catch {

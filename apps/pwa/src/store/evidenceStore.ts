@@ -62,6 +62,14 @@ export async function purgeAll(): Promise<void> {
 
   // 4. Clear sessionStorage
   try { sessionStorage.clear(); } catch { /* ok */ }
+
+  // 5. Remove sensitive localStorage keys. witness_pin and witness_decoy are
+  // deliberately kept — the decoy calculator needs them to unlock afterwards.
+  try {
+    for (const key of ['witness_share_bundle', 'witness_mesh_key', 'witness_ingest_url']) {
+      localStorage.removeItem(key);
+    }
+  } catch { /* ok */ }
 }
 
 // Store an encrypted blob in OPFS at evidence/{id}.enc

@@ -9,8 +9,9 @@ import {
   type ResourceStatus,
   type ResourceType,
 } from '@witness/offline-map';
-import { loadMapResources, reseedDemoResources, getStoredResources, importBundleJson } from '../store/mapResources';
+import { loadMapResources, reseedDemoResources, getStoredResources, importBundleJson, getShareableBundleJson } from '../store/mapResources';
 import { QrScannerModal } from '../components/QrScannerModal';
+import { QrShareModal } from '../components/QrShareModal';
 import { TacticalHeader } from '../components/TacticalHeader';
 
 const CARTO_DARK = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
@@ -113,7 +114,18 @@ export function TacticalMapScreen() {
   const [resources, setResources] = useState<ResourceLocation[]>([]);
   const [selectedResource, setSelectedResource] = useState<ResourceLocation | null>(null);
   const [showScanner, setShowScanner] = useState(false);
+  const [sharePayload, setSharePayload] = useState<string | null>(null);
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  function handleShare() {
+    const json = getShareableBundleJson();
+    if (json) {
+      setSharePayload(json);
+    } else {
+      setImportMsg({ ok: false, text: 'No verified bundle to share yet' });
+      setTimeout(() => setImportMsg(null), 4000);
+    }
+  }
 
   async function handleImport(data: string) {
     setShowScanner(false);
@@ -258,6 +270,12 @@ export function TacticalMapScreen() {
             className="text-[9px] font-bold tracking-widest px-2 py-1 border border-[#333] text-gray-400 hover:border-[#00ff33]/50 hover:text-[#00ff33] transition-colors"
           >
             IMPORT
+          </button>
+          <button
+            onClick={handleShare}
+            className="text-[9px] font-bold tracking-widest px-2 py-1 border border-[#333] text-gray-400 hover:border-[#00ff33]/50 hover:text-[#00ff33] transition-colors"
+          >
+            SHARE
           </button>
           <button
             onClick={flyHome}
@@ -416,6 +434,15 @@ export function TacticalMapScreen() {
         <QrScannerModal
           onClose={() => setShowScanner(false)}
           onResult={(data) => { void handleImport(data); }}
+        />
+      )}
+
+      {/* QR sequence display for sharing the verified bundle to another device */}
+      {sharePayload && (
+        <QrShareModal
+          payload={sharePayload}
+          title="SHARE RESOURCE BUNDLE"
+          onClose={() => setSharePayload(null)}
         />
       )}
     </div>

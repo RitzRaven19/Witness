@@ -14,11 +14,22 @@ export interface QrScannerControls {
   reset: () => void;
 }
 
-export function useQrScanner(): QrScannerControls {
+/**
+ * @param onDetect Optional handler called for each decoded QR. Return true to
+ * finish (camera stops, state → 'found'); return false to keep scanning —
+ * used for multi-frame sequences. Without it, the first code finishes the scan.
+ */
+export function useQrScanner(
+  onDetect?: (data: string) => boolean | Promise<boolean>,
+): QrScannerControls {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
+  const lastDataRef = useRef<string | null>(null);
+  const busyRef = useRef(false);
+  const onDetectRef = useRef(onDetect);
+  onDetectRef.current = onDetect;
 
   const [state, setState] = useState<QrScanState>('idle');
   const [result, setResult] = useState<string | null>(null);
@@ -45,6 +56,8 @@ export function useQrScanner(): QrScannerControls {
 
   const start = useCallback(async () => {
     reset();
+    lastDataRef.current = null;
+    busyRef.current = false;
     setState('scanning');
 
     let stream: MediaStream;
@@ -86,13 +99,33 @@ export function useQrScanner(): QrScannerControls {
       const imageData = ctx.getImageData(0, 0, w, h);
       const code = jsQR(imageData.data, w, h, { inversionAttempts: 'dontInvert' });
 
-      if (code?.data) {
-        setResult(code.data);
-        setState('found');
-        // stop camera after successful scan
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-        return;
+      if (code?.data && !busyRef.current && code.data !== lastDataRef.current) {
+        lastDataRef.current = code.data;
+        const finish = () => {
+          if (rafRef.current !== null) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+          }
+          setResult(code!.data);
+          setState('found');
+          streamRef.current?.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+        };
+        const handler = onDetectRef.current;
+        if (!handler) {
+          finish();
+          return; // single-shot mode: stop after the first code
+        }
+        // Multi-frame mode: the handler decides when the scan is complete.
+        busyRef.current = true;
+        Promise.resolve(handler(code.data))
+          .then((done) => {
+            busyRef.current = false;
+            if (done) finish();
+          })
+          .catch(() => {
+            busyRef.current = false;
+          });
       }
 
       rafRef.current = requestAnimationFrame(tick);
