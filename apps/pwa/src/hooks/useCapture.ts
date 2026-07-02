@@ -74,6 +74,9 @@ export function useCapture(onSaved: () => void) {
       // Queue a compact signed HashReceipt for the LoRa DTN mesh — it broadcasts
       // now if a companion device is connected, else waits in the queue.
       loraStore.enqueueEvidenceReceipt(record).catch(() => {});
+      // Ask the browser not to evict our storage under disk pressure — evidence
+      // must survive. Safe to call repeatedly; no-op once granted.
+      navigator.storage?.persist?.().catch(() => {});
     } catch (err) {
       setState({ phase: 'error', message: String(err) });
     }

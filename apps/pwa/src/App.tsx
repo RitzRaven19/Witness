@@ -10,8 +10,9 @@ import { TacticalVaultScreen } from './screens/TacticalVaultScreen';
 import { TacticalMapScreen } from './screens/TacticalMapScreen';
 import { PurgeScreen } from './screens/PurgeScreen';
 import { DecoyScreen } from './screens/DecoyScreen';
+import { SettingsScreen } from './screens/SettingsScreen';
 
-export type MobileTab = 'home' | 'comms' | 'signal' | 'vault' | 'map' | 'capture';
+export type MobileTab = 'home' | 'comms' | 'signal' | 'vault' | 'map' | 'capture' | 'settings';
 
 /** Returns the stored 4-digit PIN, creating one if it doesn't exist yet. */
 function getOrCreatePin(): string {
@@ -74,6 +75,7 @@ export function App() {
         {tab === 'signal'  && <SignalScreen />}
         {tab === 'vault'   && <TacticalVaultScreen />}
         {tab === 'map'     && <TacticalMapScreen />}
+        {tab === 'settings' && <SettingsScreen pin={pin} onPurge={() => setShowPurge(true)} />}
 
         {/* Purge modal (absolute overlay) */}
         {showPurge && (
