@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { purgeAll } from '../store/evidenceStore';
+import { WaveIcon } from '../components/TacticalHeader';
 
 interface Props {
   pin: string;
@@ -50,10 +51,10 @@ export function PurgeScreen({ pin, onClose, onActivateDecoy }: Props) {
       <header className="flex items-center justify-between px-4 py-3 bg-[#0a0a0a] border-b border-[#1a1a1a] shrink-0">
         <div className="flex items-center gap-3">
           {stage === 'warning' && (
-            <button onClick={onClose} className="flex flex-col gap-1 p-1">
-              <span className="w-5 h-0.5 bg-[#00ff33]"/>
-              <span className="w-5 h-0.5 bg-[#00ff33]"/>
-              <span className="w-5 h-0.5 bg-[#00ff33]"/>
+            <button onClick={onClose} aria-label="Close purge screen" className="p-1 text-[#00ff33] hover:text-white transition-colors">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
             </button>
           )}
           <span className="text-[#00ff33] font-bold tracking-[0.15em] text-[13px]">TACTICAL_NET</span>
@@ -228,10 +229,3 @@ export function PurgeScreen({ pin, onClose, onActivateDecoy }: Props) {
   );
 }
 
-function WaveIcon() {
-  return (
-    <svg className="w-5 h-5 text-[#00ff33]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z"/>
-    </svg>
-  );
-}

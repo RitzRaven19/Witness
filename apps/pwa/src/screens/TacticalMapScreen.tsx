@@ -11,6 +11,7 @@ import {
 } from '@witness/offline-map';
 import { loadMapResources, reseedDemoResources, getStoredResources, importBundleJson } from '../store/mapResources';
 import { QrScannerModal } from '../components/QrScannerModal';
+import { TacticalHeader } from '../components/TacticalHeader';
 
 const CARTO_DARK = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
@@ -106,6 +107,7 @@ export function TacticalMapScreen() {
   const mapLoadedRef = useRef(false);
   const resourceMarkersRef = useRef<maplibregl.Marker[]>([]);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [accuracy, setAccuracy] = useState<number | null>(null); // metres, from the GPS fix
   const [gpsState, setGpsState] = useState<GpsState>('none');
   const [showResources, setShowResources] = useState(true);
   const [resources, setResources] = useState<ResourceLocation[]>([]);
@@ -196,6 +198,7 @@ export function TacticalMapScreen() {
           if (cancelled) return;
           const { latitude: lat, longitude: lng } = pos.coords;
           setCoords({ lat, lng });
+          setAccuracy(pos.coords.accuracy);
           setGpsState('locked');
           map.flyTo({ center: [lng, lat], zoom: 14, duration: 1200 });
           gpsMarker = new maplibregl.Marker({ color: '#00ff33' })
@@ -235,17 +238,7 @@ export function TacticalMapScreen() {
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d] overflow-hidden">
-      <header className="flex items-center justify-between px-4 py-3 bg-[#0d0d0d] border-b border-[#1a1a1a] shrink-0 z-10">
-        <div className="flex items-center gap-3">
-          <button className="flex flex-col gap-1 p-1">
-            <span className="w-5 h-0.5 bg-[#00ff33]"/>
-            <span className="w-5 h-0.5 bg-[#00ff33]"/>
-            <span className="w-5 h-0.5 bg-[#00ff33]"/>
-          </button>
-          <span className="text-[#00ff33] font-bold tracking-[0.15em] text-[13px]">TACTICAL_NET</span>
-        </div>
-        <WaveIcon />
-      </header>
+      <TacticalHeader />
 
       <div className="flex items-center justify-between px-4 py-2 bg-[#0d0d0d] shrink-0 z-10">
         <h2 className="text-xl font-bold text-white tracking-widest">EMERGENCY MAP</h2>
@@ -373,19 +366,26 @@ export function TacticalMapScreen() {
             </div>
           )}
           <div className="flex gap-1 mb-1">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                className={`flex-1 h-1.5 ${
-                  gpsState === 'locked'    ? (i < 6 ? 'bg-[#00ff33]' : 'bg-[#333]') :
-                  gpsState === 'acquiring' ? (i < 3 ? 'bg-[#b8860b]' : 'bg-[#333]') :
-                  'bg-[#333]'
-                }`}
-              />
-            ))}
+            {Array.from({ length: 8 }).map((_, i) => {
+              // Map fix accuracy (metres) onto signal bars: ≤5m → 8 bars, ≥150m → 1 bar
+              const bars = accuracy === null ? 0
+                : Math.max(1, Math.min(8, Math.round(8 - 7 * (Math.min(accuracy, 150) - 5) / 145)));
+              return (
+                <div
+                  key={i}
+                  className={`flex-1 h-1.5 ${
+                    gpsState === 'locked'    ? (i < bars ? 'bg-[#00ff33]' : 'bg-[#333]') :
+                    gpsState === 'acquiring' ? (i < 3 ? 'bg-[#b8860b]' : 'bg-[#333]') :
+                    'bg-[#333]'
+                  }`}
+                />
+              );
+            })}
           </div>
           <div className="text-gray-500 text-[8px] tracking-widest">
-            {gpsState === 'locked' ? 'SATELLITE LOCK: 78%' : gpsState === 'acquiring' ? 'SEARCHING...' : 'NO SIGNAL'}
+            {gpsState === 'locked'
+              ? accuracy !== null ? `ACCURACY: ±${Math.round(accuracy)} M` : 'FIX ACQUIRED'
+              : gpsState === 'acquiring' ? 'SEARCHING...' : 'NO SIGNAL'}
           </div>
         </div>
 
@@ -419,13 +419,5 @@ export function TacticalMapScreen() {
         />
       )}
     </div>
-  );
-}
-
-function WaveIcon() {
-  return (
-    <svg className="w-5 h-5 text-[#00ff33]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z"/>
-    </svg>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { TacticalHeader } from '../components/TacticalHeader';
 
 interface MeshPeer {
   id: string;
@@ -67,14 +68,7 @@ export function TacticalCommsScreen() {
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d]">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 bg-[#0d0d0d] border-b border-[#1a1a1a] shrink-0">
-        <div className="flex items-center gap-3">
-          <HamburgerIcon />
-          <span className="text-[#00ff33] font-bold tracking-[0.15em] text-[13px]">TACTICAL_NET</span>
-        </div>
-        <WaveIcon />
-      </header>
+      <TacticalHeader />
 
       {/* Title + BLE status */}
       <div className="mx-4 mt-4 mb-3 border-l-2 border-[#00ff33] pl-3">
@@ -310,20 +304,3 @@ function ChatScreen({ peer, onBack }: { peer: MeshPeer; onBack: () => void }) {
   );
 }
 
-function HamburgerIcon() {
-  return (
-    <button className="flex flex-col gap-1 p-1">
-      <span className="w-5 h-0.5 bg-[#00ff33]"/>
-      <span className="w-5 h-0.5 bg-[#00ff33]"/>
-      <span className="w-5 h-0.5 bg-[#00ff33]"/>
-    </button>
-  );
-}
-
-function WaveIcon() {
-  return (
-    <svg className="w-5 h-5 text-[#00ff33]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z"/>
-    </svg>
-  );
-}

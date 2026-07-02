@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { TacticalHeader } from '../components/TacticalHeader';
 import { useLoraMesh } from '../hooks/useLoraMesh';
 
 export function SignalScreen() {
@@ -46,16 +47,7 @@ export function SignalScreen() {
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d] overflow-y-auto">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 bg-[#0d0d0d] border-b border-[#1a1a1a] shrink-0">
-        <div className="flex items-center gap-2">
-          <svg className="w-5 h-5 text-[#00ff33]" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
-          </svg>
-          <span className="text-[#00ff33] font-bold tracking-[0.15em] text-[13px]">TACTICAL_NET_SECURE</span>
-        </div>
-        <GridIcon />
-      </header>
+      <TacticalHeader title="TACTICAL_NET_SECURE" />
 
       {/* Protocol header */}
       <div className="mx-4 mt-4 mb-5 border-l-2 border-[#00ff33] pl-3">
@@ -328,14 +320,3 @@ export function SignalScreen() {
   );
 }
 
-function GridIcon() {
-  return (
-    <svg className="w-5 h-5 text-[#00ff33]" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M3 3h7v7H3zm0 11h7v7H3zm11-11h7v7h-7zm0 11h7v7h-7z" opacity="0.5"/>
-      <rect x="3" y="3" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <rect x="3" y="14" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <rect x="14" y="3" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <rect x="14" y="14" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-    </svg>
-  );
-}

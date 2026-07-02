@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TacticalHeader } from '../components/TacticalHeader';
 
 interface Protocol {
   id: string;
@@ -203,16 +204,7 @@ export function TacticalVaultScreen() {
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d] overflow-y-auto">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 bg-[#0d0d0d] border-b border-[#1a1a1a] shrink-0">
-        <div className="flex items-center gap-2">
-          <svg className="w-5 h-5 text-[#00ff33]" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
-          </svg>
-          <span className="text-[#00ff33] font-bold tracking-[0.15em] text-[13px]">TACTICAL_NET_SECURE</span>
-        </div>
-        <GridIcon />
-      </header>
+      <TacticalHeader title="TACTICAL_NET_SECURE" />
 
       {/* Title */}
       <div className="px-4 pt-4 pb-3 border-b border-[#1a1a1a] shrink-0">
@@ -407,13 +399,3 @@ function CategoryIcon({ category, color }: { category: string; color: string }) 
   );
 }
 
-function GridIcon() {
-  return (
-    <svg className="w-5 h-5 text-[#00ff33]" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth={1.2}>
-      <rect x="2" y="2" width="6" height="6"/>
-      <rect x="12" y="2" width="6" height="6"/>
-      <rect x="2" y="12" width="6" height="6"/>
-      <rect x="12" y="12" width="6" height="6"/>
-    </svg>
-  );
-}

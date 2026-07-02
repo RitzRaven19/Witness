@@ -1,6 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { MobileTab } from '../App';
 import { QrScannerModal } from '../components/QrScannerModal';
+import { TacticalHeader } from '../components/TacticalHeader';
+import { useLoraMesh } from '../hooks/useLoraMesh';
+import { useSyncStatus } from '../hooks/useSyncStatus';
+import { getAllEvidence } from '../store/evidenceStore';
 
 interface Props {
   onNavigate: (tab: MobileTab) => void;
@@ -9,26 +13,18 @@ interface Props {
 
 export function HomeScreen({ onNavigate, onPurge }: Props) {
   const [showQr, setShowQr] = useState(false);
+  const [evidenceCount, setEvidenceCount] = useState<number | null>(null);
+  const { online, queueCount } = useSyncStatus(0);
+  const { status: mesh } = useLoraMesh();
+
+  useEffect(() => {
+    getAllEvidence().then((all) => setEvidenceCount(all.length)).catch(() => {});
+  }, []);
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d] overflow-y-auto">
       {showQr && <QrScannerModal onClose={() => setShowQr(false)} />}
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 bg-[#0d0d0d] border-b border-[#1a1a1a] shrink-0">
-        <div className="flex items-center gap-3">
-          <button className="flex flex-col gap-1 p-1">
-            <span className="w-5 h-0.5 bg-[#00ff33]"/>
-            <span className="w-5 h-0.5 bg-[#00ff33]"/>
-            <span className="w-5 h-0.5 bg-[#00ff33]"/>
-          </button>
-          <span className="text-[#00ff33] font-bold tracking-[0.15em] text-[13px]">TACTICAL_NET</span>
-        </div>
-        <div className="flex flex-col items-end">
-          <span className="text-[8px] text-[#00ff33] tracking-widest">GPS_LOCKED</span>
-          <span className="text-[9px] text-[#00ff33] tracking-widest">42.3601° N, 71.0589° W</span>
-        </div>
-        <WaveIcon />
-      </header>
+      <TacticalHeader />
 
       {/* Hero */}
       <div className="px-5 pt-6 pb-4">
@@ -81,18 +77,23 @@ export function HomeScreen({ onNavigate, onPurge }: Props) {
         />
         <MenuItem
           icon={<SettingsMenuIcon />}
-          label="SETTINGS"
-          sub="SYSTEM CONFIG & SECURITY"
+          label="PANIC PURGE"
+          sub="WIPE ALL DATA · ACTIVATE DECOY"
+          subRed
           onClick={onPurge}
         />
       </div>
 
-      {/* System Log */}
+      {/* System status — real state, terminal style */}
       <div className="mx-4 mb-4 bg-[#0a0a0a] border border-[#1a1a1a] p-3 flex-1">
         <div className="text-[9px] text-[#00cc28] font-sentry leading-[1.9] tracking-wide">
-          <div>&gt; INITIALIZING SECONDARY MESH NETWORK...</div>
-          <div>&gt; HANDSHAKE SEQUENCE AUTHORIZED VIA PROTOCOL 4.9.2</div>
-          <div>&gt; WAITING FOR PEER-TO-PEER CONFIRMATION... [OK]</div>
+          <div>&gt; UPLINK: {online ? 'CONNECTED' : 'OFFLINE — STORE & FORWARD ACTIVE'}</div>
+          <div>&gt; VAULT: {evidenceCount === null ? 'READING…' : `${evidenceCount} ITEM${evidenceCount === 1 ? '' : 'S'} SECURED`}{queueCount > 0 ? ` · ${queueCount} AWAITING UPLOAD` : ''}</div>
+          <div>&gt; LORA MESH: {
+            mesh.conn === 'connected' ? `LINKED (${mesh.kind === 'serial' ? 'USB-C' : 'BLE'})` :
+            mesh.pending > 0 ? `${mesh.pending} RECEIPT${mesh.pending === 1 ? '' : 'S'} QUEUED — NO COMPANION` :
+            'STANDBY — NO COMPANION DEVICE'
+          }</div>
         </div>
       </div>
     </div>
@@ -130,13 +131,6 @@ function MenuItem({ icon, label, sub, subRed, accent, onClick }: {
 
 /* Icons */
 function CaptureMenuIcon() { return <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"/><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z"/></svg>; }
-function WaveIcon() {
-  return (
-    <svg className="w-5 h-5 text-[#00ff33]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z"/>
-    </svg>
-  );
-}
 function CommsMenuIcon() { return <svg fill="currentColor" viewBox="0 0 24 24" className="w-6 h-6"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>; }
 function SignalMenuIcon() { return <svg fill="currentColor" viewBox="0 0 24 24" className="w-6 h-6 text-[#cc4444]"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>; }
 function MapMenuIcon() { return <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>; }

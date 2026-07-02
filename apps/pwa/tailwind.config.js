@@ -16,8 +16,9 @@ export default {
         }
       },
       fontFamily: {
-        sentry: ['"Space Mono"', 'monospace', 'sans-serif'],
-        display: ['"Inter"', 'sans-serif'],
+        // System stacks only — no webfonts (offline-first, no CDN requests)
+        sentry: ['ui-monospace', '"Cascadia Mono"', '"Segoe UI Mono"', 'Menlo', 'Consolas', 'monospace'],
+        display: ['system-ui', '-apple-system', '"Segoe UI"', 'Roboto', 'sans-serif'],
       },
       backgroundImage: {
         'sentry-gradient': 'linear-gradient(to bottom, #d9ccb9 0%, #a3af9e 15%, #606d64 40%, #1a1e1b 80%, #0d0d0d 100%)',
