@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TacticalHeader } from '../components/TacticalHeader';
+import { useLoraMesh } from '../hooks/useLoraMesh';
 
 interface MeshPeer {
   id: string;
@@ -11,10 +12,23 @@ interface MeshPeer {
 type BleAvailability = 'checking' | 'available' | 'unavailable';
 type PeerScanState = 'idle' | 'scanning' | 'error';
 
+/** Paired peers persist across reloads; wiped by panic purge. */
+export const PEERS_STORAGE = 'witness_mesh_peers';
+
+function loadPeers(): MeshPeer[] {
+  try {
+    const raw = localStorage.getItem(PEERS_STORAGE);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export function TacticalCommsScreen() {
   const [selected, setSelected] = useState<MeshPeer | null>(null);
   const [search, setSearch] = useState('');
-  const [peers, setPeers] = useState<MeshPeer[]>([]);
+  const [peers, setPeers] = useState<MeshPeer[]>(loadPeers);
   const [bleAvail, setBleAvail] = useState<BleAvailability>('checking');
   const [scanState, setScanState] = useState<PeerScanState>('idle');
   const [scanError, setScanError] = useState<string | null>(null);
@@ -22,6 +36,12 @@ export function TacticalCommsScreen() {
   useEffect(() => {
     setBleAvail('bluetooth' in navigator ? 'available' : 'unavailable');
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PEERS_STORAGE, JSON.stringify(peers));
+    } catch { /* storage full — pairing survives only this session */ }
+  }, [peers]);
 
   if (selected) {
     return <ChatScreen peer={selected} onBack={() => setSelected(null)} />;
@@ -145,13 +165,10 @@ export function TacticalCommsScreen() {
               onClick={() => setSelected(peer)}
               className="flex items-center gap-3 bg-[#111] border border-[#1e1e1e] p-3 hover:border-[#00ff33]/30 hover:bg-[#141414] transition-all text-left active:scale-[0.99]"
             >
-              <div className="relative shrink-0">
-                <div className="w-12 h-12 bg-[#222] flex items-center justify-center">
-                  <svg className="w-6 h-6 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                  </svg>
-                </div>
-                <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#00ff33] border-2 border-[#111]"/>
+              <div className="w-12 h-12 bg-[#222] flex items-center justify-center shrink-0">
+                <svg className="w-6 h-6 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                </svg>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="font-bold text-white tracking-widest text-[13px]">{peer.name}</div>
@@ -160,11 +177,10 @@ export function TacticalCommsScreen() {
                 </div>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
-                <div className="flex items-center gap-1 bg-[#0d2010] border border-[#00ff33]/40 px-2 py-0.5">
-                  <svg className="w-2.5 h-2.5 text-[#00ff33]" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/>
-                  </svg>
-                  <span className="text-[#00ff33] text-[9px] font-bold tracking-widest">SECURE</span>
+                <div className="bg-[#141414] border border-[#333] px-2 py-0.5">
+                  <span className="text-gray-400 text-[9px] font-bold tracking-widest">
+                    PAIRED {new Date(peer.pairedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase()}
+                  </span>
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); removePeer(peer.id); }}
@@ -198,27 +214,53 @@ export function TacticalCommsScreen() {
         </button>
         <button
           onClick={() => setPeers([])}
-          className="flex-1 flex items-center justify-center gap-2 bg-[#cc0000] py-3.5 hover:bg-[#dd0000] transition-colors"
+          disabled={peers.length === 0}
+          className={`flex-1 flex items-center justify-center gap-2 py-3.5 transition-colors ${
+            peers.length > 0 ? 'bg-[#cc0000] hover:bg-[#dd0000]' : 'bg-[#0d0d0d] cursor-not-allowed'
+          }`}
         >
-          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+          <svg className={`w-4 h-4 ${peers.length > 0 ? 'text-white' : 'text-gray-700'}`} fill="currentColor" viewBox="0 0 24 24">
             <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
           </svg>
-          <span className="text-[11px] font-bold tracking-widest text-white">PURGE LOGS</span>
+          <span className={`text-[11px] font-bold tracking-widest ${peers.length > 0 ? 'text-white' : 'text-gray-700'}`}>REMOVE ALL</span>
         </button>
       </div>
     </div>
   );
 }
 
-/* ── Chat Screen ── */
+/* ── Chat Screen ──
+ * Honest scope: notes are held in memory on THIS device only and really are
+ * deleted after TTL_MS. There is no peer-to-peer message transport yet (that
+ * needs a key-agreement protocol), so nothing here claims to transmit. */
+const TTL_MS = 120_000;
+
 function ChatScreen({ peer, onBack }: { peer: MeshPeer; onBack: () => void }) {
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<{ id: number; text: string; sent: boolean; ts: string }[]>([]);
+  const [messages, setMessages] = useState<{ id: number; text: string; sent: boolean; ts: string; expiresAt: number }[]>([]);
+  const { status: mesh } = useLoraMesh();
+
+  // Enforce the advertised TTL for real: sweep expired messages every second.
+  useEffect(() => {
+    const t = setInterval(() => {
+      const now = Date.now();
+      setMessages((prev) => (prev.some((m) => m.expiresAt <= now)
+        ? prev.filter((m) => m.expiresAt > now)
+        : prev));
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
 
   function sendMessage() {
     if (!message.trim()) return;
     const ts = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setMessages((prev) => [...prev, { id: Date.now(), text: message.trim(), sent: true, ts }]);
+    setMessages((prev) => [...prev, {
+      id: Date.now(),
+      text: message.trim(),
+      sent: true,
+      ts,
+      expiresAt: Date.now() + TTL_MS,
+    }]);
     setMessage('');
   }
 
@@ -230,15 +272,14 @@ function ChatScreen({ peer, onBack }: { peer: MeshPeer; onBack: () => void }) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/>
           </svg>
         </button>
-        <div className="w-10 h-10 bg-[#222] flex items-center justify-center shrink-0 relative">
+        <div className="w-10 h-10 bg-[#222] flex items-center justify-center shrink-0">
           <svg className="w-6 h-6 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
           </svg>
-          <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00ff33] border-2 border-[#111]"/>
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-white font-bold tracking-widest text-[13px] truncate">{peer.name}</div>
-          <div className="text-[#00ff33] text-[9px] tracking-widest">MESH CHANNEL • ENCRYPTED</div>
+          <div className="text-gray-500 text-[9px] tracking-widest">LOCAL NOTES • THIS DEVICE ONLY</div>
         </div>
       </header>
 
@@ -249,7 +290,7 @@ function ChatScreen({ peer, onBack }: { peer: MeshPeer; onBack: () => void }) {
           </svg>
           <span className="text-[9px] text-[#cc4444] tracking-widest font-bold">AUTODELETE_PROTOCOL_ENGAGED</span>
         </div>
-        <span className="text-[9px] text-[#cc4444] tracking-widest">TTL: 120S</span>
+        <span className="text-[9px] text-[#cc4444] tracking-widest">TTL: {TTL_MS / 1000}S</span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-4">
@@ -265,7 +306,7 @@ function ChatScreen({ peer, onBack }: { peer: MeshPeer; onBack: () => void }) {
                 <p className={`text-[12px] text-white leading-relaxed ${m.sent ? 'text-right' : ''}`}>{m.text}</p>
               </div>
               <div className={`flex items-center gap-2 mt-1.5 px-1 ${m.sent ? 'justify-end' : ''}`}>
-                <span className="text-[8px] text-[#00ff33] tracking-widest">ENCRYPTED</span>
+                <span className="text-[8px] text-[#b8860b] tracking-widest">LOCAL</span>
                 <span className="text-[8px] text-gray-600 tracking-widest">{m.ts}</span>
               </div>
             </div>
@@ -275,10 +316,12 @@ function ChatScreen({ peer, onBack }: { peer: MeshPeer; onBack: () => void }) {
 
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-[#1a1a1a] shrink-0">
         <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#00ff33]"/>
-          <span className="text-[8px] text-[#00ff33] tracking-widest">MESH_LINK_ACTIVE</span>
+          <div className={`w-1.5 h-1.5 rounded-full ${mesh.conn === 'connected' ? 'bg-[#00ff33]' : 'bg-gray-600'}`}/>
+          <span className={`text-[8px] tracking-widest ${mesh.conn === 'connected' ? 'text-[#00ff33]' : 'text-gray-500'}`}>
+            {mesh.conn === 'connected' ? 'LORA_COMPANION_LINKED' : 'NO_CARRIER'}
+          </span>
         </div>
-        <span className="text-[8px] text-gray-600 tracking-widest">AES-256_ACTIVE</span>
+        <span className="text-[8px] text-gray-600 tracking-widest">TTL {TTL_MS / 1000}S</span>
       </div>
 
       <div className="flex items-center gap-0 bg-[#111] border-t border-[#1a1a1a] shrink-0 px-2 py-2">

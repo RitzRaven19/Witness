@@ -66,7 +66,7 @@ export async function purgeAll(): Promise<void> {
   // 5. Remove sensitive localStorage keys. witness_pin and witness_decoy are
   // deliberately kept — the decoy calculator needs them to unlock afterwards.
   try {
-    for (const key of ['witness_share_bundle', 'witness_mesh_key', 'witness_ingest_url']) {
+    for (const key of ['witness_share_bundle', 'witness_mesh_key', 'witness_ingest_url', 'witness_mesh_peers']) {
       localStorage.removeItem(key);
     }
   } catch { /* ok */ }
