@@ -168,3 +168,18 @@ describe('frame wire framing', () => {
     expect(out).toEqual([f1, f2]);
   });
 });
+
+describe('MeshMessage payload type', () => {
+  it('round-trips a sealed-box payload through a packet', async () => {
+    // A sealed box is opaque bytes to the DTN layer: 65B eph pub + 12B iv + ct
+    const sealed = new Uint8Array(65 + 12 + 40).map((_, i) => (i * 7) & 0xff);
+    const frame = await encodePacket(
+      { version: PROTOCOL_VERSION, packetId: generatePacketId(), hopCount: 0, payloadType: PayloadType.MeshMessage, payload: sealed },
+      MESH_KEY,
+    );
+    const d = decodePacket(frame);
+    expect(d.payloadType).toBe(PayloadType.MeshMessage);
+    expect(d.payload).toEqual(sealed);
+    expect(await verifyPacket(frame, MESH_KEY)).toBe(true);
+  });
+});

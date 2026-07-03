@@ -355,7 +355,7 @@ LINDDUN analyses privacy threats from the perspective of the witness as a data s
 | PB-S-1 | Forged bulletin | Offline hybrid signature verification against trust bundle | Bulletin verifier (Phase 2) |
 | PB-T-1 | Bulletin tampered after signing | ECDSA P-256 + ML-DSA-65 hybrid signature | `signing.ts` + PQC layer |
 | PB-S-2 | Compromised publisher key | Short-lived certificates + revocation list in trust bundle | Trust bundle governance |
-| P2P-S-1 | Rogue helper device | Out-of-band QR key exchange before transfer | P2P handshake (Phase 2) |
+| P2P-S-1 | Rogue helper device | Out-of-band QR key exchange before transfer | Contact-code QR pairing (`ecdh.ts` + comms screen); mesh messages sealed to the exchanged key |
 | P2P-T-1 | Chunks tampered during transfer | Per-chunk SHA-256 + AES-GCM auth tag | `hash.ts: hashStream()` + `encrypt.ts` |
 | LL-I-1 | EXIF identifies witness | Mandatory EXIF strip before encryption | Capture pipeline |
 | LL-D-1 | Upload traffic pattern detected | Generic CDN endpoint; timing randomisation; background sync | Upload queue design |

@@ -897,12 +897,23 @@ LoRaDTNPacket {
   version:     uint8          // Protocol version; currently 1
   packet_id:   bytes[8]       // Random 8-byte ID; used for deduplication
   hop_count:   uint8          // Incremented at each relay; dropped if > MAX_HOPS (default: 7)
-  payload_type: uint8         // 0x01 = HashReceipt | 0x02 = TrustBundleFragment | 0x03 = ResourceBundle
+  payload_type: uint8         // 0x01 = HashReceipt | 0x02 = TrustBundleFragment | 0x03 = ResourceBundle | 0x04 = MeshMessage
   payload:     bytes[≤200]    // Compressed, encrypted payload (see below)
   hmac:        bytes[8]       // Truncated HMAC-SHA256 over (packet_id || hop_count || payload)
                               // Prevents relay nodes injecting or mutating packets
 }
 ```
+
+**Payload encoding for MeshMessage (0x04, Plane E "mesh message"):**
+
+An ECDH sealed box — `ephemeral_pub(65) || iv(12) || AES-256-GCM ciphertext+tag` —
+sealed to the recipient's contact public key (P-256 ECDH → HKDF-SHA-256 → AES-GCM;
+the Plane E draft names X25519, but P-256 is used for universal Web Crypto support).
+Contact keys are exchanged out-of-band via in-person QR scan (threat model P2P-S-1).
+The wire packet carries no sender or recipient identity: every node attempts
+decryption and keeps the message only if it succeeds ("decrypt-if-yours"); all
+nodes relay it regardless. The sender's contact-key fingerprint travels inside
+the ciphertext, so only the recipient learns who sent it.
 
 **Payload encoding for HashReceipt (~estimated compressed size: 150–220 bytes):**
 ```

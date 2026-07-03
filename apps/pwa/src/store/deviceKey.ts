@@ -16,19 +16,27 @@ import {
   importPrivateKey,
   importPublicKey,
   keyFingerprint,
+  generateEcdhKeyPair,
+  exportEcdhPublicKey,
+  exportEcdhPrivateKey,
+  importEcdhPrivateKey,
+  importEcdhPublicKey,
   type HybridKeyPair,
 } from '@witness/crypto-core';
 
 export const KEYS_DB_NAME = 'witness-keys';
 const KEYS_STORE = 'keys';
 const DEVICE_ID = 'device';
+const ECDH_ID = 'device-ecdh';
 
 interface StoredDeviceKey {
   id: string;
-  ecdsaPkcs8: ArrayBuffer; // ECDSA P-256 private key (PKCS#8)
-  ecdsaSpki: ArrayBuffer; // ECDSA P-256 public key (SPKI)
-  mldsaSecret: Uint8Array;
-  mldsaPublic: Uint8Array;
+  ecdsaPkcs8?: ArrayBuffer; // ECDSA P-256 private key (PKCS#8)
+  ecdsaSpki?: ArrayBuffer; // ECDSA P-256 public key (SPKI)
+  mldsaSecret?: Uint8Array;
+  mldsaPublic?: Uint8Array;
+  ecdhPkcs8?: ArrayBuffer; // ECDH P-256 private key (contact/messaging key)
+  ecdhRaw?: Uint8Array; // ECDH P-256 public key (raw uncompressed point)
 }
 
 interface KeysDB extends DBSchema {
@@ -36,6 +44,7 @@ interface KeysDB extends DBSchema {
 }
 
 let cached: HybridKeyPair | null = null;
+let cachedEcdh: CryptoKeyPair | null = null;
 
 async function getDb(): Promise<IDBPDatabase<KeysDB>> {
   return openDB<KeysDB>(KEYS_DB_NAME, 1, {
@@ -54,7 +63,7 @@ export async function getDeviceKey(): Promise<HybridKeyPair> {
   const db = await getDb();
   const rec = await db.get(KEYS_STORE, DEVICE_ID);
 
-  if (rec) {
+  if (rec?.ecdsaPkcs8 && rec.ecdsaSpki && rec.mldsaSecret && rec.mldsaPublic) {
     const [privateKey, publicKey] = await Promise.all([
       importPrivateKey(rec.ecdsaPkcs8),
       importPublicKey(rec.ecdsaSpki),
@@ -87,7 +96,42 @@ export async function getDeviceKeyId(): Promise<string> {
   return keyFingerprint((await getDeviceKey()).classical.publicKey);
 }
 
+/**
+ * Load the device ECDH contact/messaging key pair (Plane E mesh messages),
+ * generating and persisting it on first use. Distinct from the signing key so
+ * signing and key-agreement duties never share a key.
+ */
+export async function getDeviceEcdhKey(): Promise<CryptoKeyPair> {
+  if (cachedEcdh) return cachedEcdh;
+  const db = await getDb();
+  const rec = await db.get(KEYS_STORE, ECDH_ID);
+
+  if (rec?.ecdhPkcs8 && rec.ecdhRaw) {
+    const [privateKey, publicKey] = await Promise.all([
+      importEcdhPrivateKey(rec.ecdhPkcs8),
+      importEcdhPublicKey(rec.ecdhRaw),
+    ]);
+    cachedEcdh = { privateKey, publicKey } as CryptoKeyPair;
+    return cachedEcdh;
+  }
+
+  const kp = await generateEcdhKeyPair();
+  const [ecdhPkcs8, ecdhRaw] = await Promise.all([
+    exportEcdhPrivateKey(kp.privateKey),
+    exportEcdhPublicKey(kp.publicKey),
+  ]);
+  await db.put(KEYS_STORE, { id: ECDH_ID, ecdhPkcs8, ecdhRaw });
+  cachedEcdh = kp;
+  return kp;
+}
+
+/** The device's ECDH public key as raw bytes (65B) — the "contact key" shared via QR. */
+export async function getDeviceEcdhPublicRaw(): Promise<Uint8Array> {
+  return exportEcdhPublicKey((await getDeviceEcdhKey()).publicKey);
+}
+
 /** Drop the in-memory cache (call after a panic purge deletes the DB). */
 export function resetDeviceKeyCache(): void {
   cached = null;
+  cachedEcdh = null;
 }

@@ -7,6 +7,8 @@ interface Props {
   payload: string;
   title?: string;
   onClose: () => void;
+  /** Render only the QR body (no fixed overlay/header) inside a host container. */
+  embedded?: boolean;
 }
 
 const FRAME_INTERVAL_MS = 900;
@@ -16,7 +18,7 @@ const FRAME_INTERVAL_MS = 900;
  * air-gap transfer. The receiving device scans with the standard scanner,
  * which reassembles frames in any order (utils/qrSequence.ts).
  */
-export function QrShareModal({ payload, title = 'SHARE VIA QR', onClose }: Props) {
+export function QrShareModal({ payload, title = 'SHARE VIA QR', onClose, embedded = false }: Props) {
   const [frames, setFrames] = useState<string[] | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [index, setIndex] = useState(0);
@@ -67,22 +69,7 @@ export function QrShareModal({ payload, title = 'SHARE VIA QR', onClose }: Props
 
   const total = frames?.length ?? 0;
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#0d0d0d]">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] shrink-0">
-        <span className="text-[#00ff33] font-bold tracking-[0.15em] text-[13px]">{title}</span>
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-white p-1 transition-colors"
-          aria-label="Close share screen"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-        </button>
-      </div>
-
+  const body = (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6">
         {error ? (
           <p className="text-[#cc4444] font-bold tracking-widest text-[12px] text-center">{error}</p>
@@ -141,6 +128,26 @@ export function QrShareModal({ payload, title = 'SHARE VIA QR', onClose }: Props
           </>
         )}
       </div>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#0d0d0d]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] shrink-0">
+        <span className="text-[#00ff33] font-bold tracking-[0.15em] text-[13px]">{title}</span>
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-white p-1 transition-colors"
+          aria-label="Close share screen"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      {body}
     </div>
   );
 }

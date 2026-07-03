@@ -16,7 +16,11 @@
 import {
   DTNQueue,
   PayloadType,
+  PROTOCOL_VERSION,
+  MAX_PAYLOAD_BYTES,
   decodePacket,
+  encodePacket,
+  generatePacketId,
   enqueueHashReceipt,
   rebroadcastDelayMs,
   SerialTransport,
@@ -24,8 +28,17 @@ import {
   type HashReceipt,
   type LoRaTransport,
 } from '@witness/lora-dtn';
-import { sign, mldsaSign, keyFingerprint, hexToBytes, bytesToHex } from '@witness/crypto-core';
-import { getDeviceKey } from './deviceKey';
+import {
+  sign,
+  mldsaSign,
+  keyFingerprint,
+  hexToBytes,
+  bytesToHex,
+  sealToPublicKey,
+  openSealed,
+  importEcdhPublicKey,
+} from '@witness/crypto-core';
+import { getDeviceKey, getDeviceEcdhKey, getDeviceEcdhPublicRaw } from './deviceKey';
 import type { EvidenceRecord } from './db';
 
 const MESH_KEY_STORAGE = 'witness_mesh_key';
@@ -72,6 +85,23 @@ export interface LoraStatus {
 
 type Listener = (s: LoraStatus) => void;
 
+/** A mesh message this device successfully decrypted (i.e. addressed to us). */
+export interface InboxMessage {
+  id: string;
+  /** Sender contact-key fingerprint (16 hex) carried inside the sealed box. */
+  fromFp: string;
+  text: string;
+  receivedAt: number;
+}
+
+type InboxListener = (messages: InboxMessage[]) => void;
+
+/** First 16 hex chars of SHA-256 over a raw contact public key. */
+export async function contactFingerprint(pubRaw: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', pubRaw.slice().buffer as ArrayBuffer);
+  return bytesToHex(new Uint8Array(digest)).slice(0, 16);
+}
+
 class LoraStore {
   private queue: DTNQueue | null = null;
   private transport: LoRaTransport | null = null;
@@ -80,6 +110,8 @@ class LoraStore {
   private meshKey = hexToBytes(this.meshKeyHex);
   private ingestUrl = localStorage.getItem(INGEST_URL_STORAGE);
   private readonly listeners = new Set<Listener>();
+  private inbox: InboxMessage[] = [];
+  private readonly inboxListeners = new Set<InboxListener>();
 
   private status: LoraStatus = {
     conn: 'disconnected',
@@ -258,7 +290,19 @@ class LoraStore {
       setTimeout(() => void this.transport?.send(toSend).catch(() => {}), rebroadcastDelayMs());
     }
 
-    if (res.deliver && (await this.deliverPayload(res.payload))) {
+    // Decrypt-if-yours: every node tries to open MeshMessage payloads; only the
+    // holder of the recipient key succeeds. Failure is the normal relay case.
+    if (res.payloadType === PayloadType.MeshMessage) {
+      await this.tryReceiveMeshMessage(res.packetIdHex, res.payload);
+    }
+
+    // Only HashReceipts are forwarded to the ingestion endpoint — bundles and
+    // mesh messages have no server-side meaning.
+    if (
+      res.deliver &&
+      res.payloadType === PayloadType.HashReceipt &&
+      (await this.deliverPayload(res.payload))
+    ) {
       await q.markDelivered(res.packetIdHex);
       this.emit({ delivered: this.status.delivered + 1 });
       await this.refreshPending();
@@ -294,6 +338,89 @@ class LoraStore {
     await enqueueHashReceipt(receipt, this.meshKey, q, this.transport ?? undefined);
     await this.refreshPending();
     void this.flushDeliveries();
+  }
+
+  // ── Mesh messaging (Plane E MeshMessage over the LoRa DTN) ────────────────
+
+  /** Subscribe to this session's decrypted inbox. Emits the current list immediately. */
+  subscribeInbox(listener: InboxListener): () => void {
+    this.inboxListeners.add(listener);
+    listener(this.inbox);
+    return () => this.inboxListeners.delete(listener);
+  }
+
+  getInbox(): InboxMessage[] {
+    return this.inbox;
+  }
+
+  /** Wipe the session inbox (messages are memory-only; also called on purge). */
+  clearInbox(): void {
+    this.inbox = [];
+    for (const l of this.inboxListeners) l(this.inbox);
+  }
+
+  /**
+   * Seal a short text to a peer's contact public key and queue it for the mesh.
+   * The sealed box carries our contact-key fingerprint INSIDE the ciphertext so
+   * only the recipient learns who sent it; the wire packet has no identities.
+   * Broadcasts immediately when a companion is connected, else waits queued.
+   */
+  async sendMeshMessage(peerPubRawHex: string, text: string): Promise<void> {
+    const body = text.trim();
+    if (!body) throw new Error('Empty message');
+
+    const myFp = await contactFingerprint(await getDeviceEcdhPublicRaw());
+    const plaintext = new TextEncoder().encode(JSON.stringify({ f: myFp, t: body }));
+
+    const recipientPub = await importEcdhPublicKey(hexToBytes(peerPubRawHex));
+    const sealed = await sealToPublicKey(recipientPub, plaintext);
+    if (sealed.length > MAX_PAYLOAD_BYTES) {
+      throw new Error(`Message too long for a LoRa frame (${sealed.length}/${MAX_PAYLOAD_BYTES} bytes)`);
+    }
+
+    const frame = await encodePacket(
+      {
+        version: PROTOCOL_VERSION,
+        packetId: generatePacketId(),
+        hopCount: 0,
+        payloadType: PayloadType.MeshMessage,
+        payload: sealed,
+      },
+      this.meshKey,
+    );
+
+    const q = await this.getQueue();
+    await q.enqueueLocal(frame);
+    if (this.transport?.isConnected()) {
+      await this.transport.send(frame).catch(() => {});
+    }
+    await this.refreshPending();
+  }
+
+  /** Attempt to open an inbound sealed box; keep it only if it is addressed to us. */
+  private async tryReceiveMeshMessage(
+    packetIdHex: string,
+    sealed: Uint8Array,
+  ): Promise<void> {
+    try {
+      const key = await getDeviceEcdhKey();
+      const plaintext = await openSealed(key.privateKey, sealed);
+      if (!plaintext) return; // not for us — relay only
+
+      const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as {
+        f?: string;
+        t?: string;
+      };
+      if (typeof parsed.t !== 'string' || typeof parsed.f !== 'string') return;
+
+      this.inbox = [
+        ...this.inbox,
+        { id: packetIdHex, fromFp: parsed.f, text: parsed.t, receivedAt: Date.now() },
+      ];
+      for (const l of this.inboxListeners) l(this.inbox);
+    } catch {
+      /* malformed inner payload — ignore */
+    }
   }
 }
 

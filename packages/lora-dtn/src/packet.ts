@@ -32,6 +32,13 @@ export enum PayloadType {
   HashReceipt = 0x01,
   TrustBundleFragment = 0x02,
   ResourceBundle = 0x03,
+  /**
+   * E2E-encrypted peer message (Plane E "MeshMessage"). Payload is an ECDH
+   * sealed box (crypto-core sealToPublicKey): ephemeral_pub || iv || ct+tag.
+   * Relays cannot read it; every device tries to open it and keeps it only if
+   * decryption succeeds ("decrypt-if-yours" — no recipient address on the wire).
+   */
+  MeshMessage = 0x04,
 }
 
 export interface LoRaPacketFields {
