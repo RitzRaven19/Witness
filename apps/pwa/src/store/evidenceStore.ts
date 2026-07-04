@@ -39,11 +39,12 @@ export async function purgeAll(): Promise<void> {
       req.onerror = () => resolve();   // best-effort — continue even if blocked
       req.onblocked = () => resolve(); // another tab has it open; will delete on close
     });
-  await deleteDb('witness');          // keys, evidence
-  await deleteDb('witness-map');      // Plane C resource bundles
-  await deleteDb('witness-lora-dtn'); // LoRa DTN queue + dedup history
-  await deleteDb('witness-keys');     // device signing key
-  resetDeviceKeyCache();              // drop in-memory device key after wipe
+  await deleteDb('witness');           // keys, evidence
+  await deleteDb('witness-map');       // Plane C resource bundles
+  await deleteDb('witness-lora-dtn');  // LoRa DTN queue + dedup history
+  await deleteDb('witness-keys');      // device signing key
+  await deleteDb('witness-knowledge'); // Plane D knowledge bundles
+  resetDeviceKeyCache();               // drop in-memory device key after wipe
 
   // 2. Wipe OPFS (encrypted blobs + any future offline-map tile cache)
   try {
@@ -66,7 +67,7 @@ export async function purgeAll(): Promise<void> {
   // 5. Remove sensitive localStorage keys. witness_pin and witness_decoy are
   // deliberately kept — the decoy calculator needs them to unlock afterwards.
   try {
-    for (const key of ['witness_share_bundle', 'witness_mesh_key', 'witness_ingest_url', 'witness_mesh_peers', 'witness_callsign']) {
+    for (const key of ['witness_share_bundle', 'witness_share_kbundle', 'witness_mesh_key', 'witness_ingest_url', 'witness_mesh_peers', 'witness_callsign']) {
       localStorage.removeItem(key);
     }
   } catch { /* ok */ }

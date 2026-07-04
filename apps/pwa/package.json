@@ -12,6 +12,7 @@
   "dependencies": {
     "@types/qrcode": "^1.5.6",
     "@witness/crypto-core": "workspace:*",
+    "@witness/knowledge-library": "workspace:*",
     "@witness/lora-dtn": "workspace:*",
     "@witness/offline-map": "workspace:*",
     "idb": "^8.0.0",

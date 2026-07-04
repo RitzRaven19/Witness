@@ -7,7 +7,16 @@
  * Plane B SignedBulletins.
  */
 
-import { hybridVerify, importHybridPublicKey } from '@witness/crypto-core';
+import {
+  hybridVerify,
+  importHybridPublicKey,
+  checkPublisher,
+  type PublisherEntry,
+  type TrustBundle,
+} from '@witness/crypto-core';
+
+// Trust types are shared across all signed-content planes (B, C, D).
+export type { PublisherEntry, TrustBundle };
 
 export type ResourceType =
   | 'granary'
@@ -50,20 +59,6 @@ export interface ResourceBundle {
   };
   resources: ResourceLocation[];
   signature: HybridSignature;
-}
-
-export interface PublisherEntry {
-  publisher_id: string;
-  display_name: string;
-  ecdsa_public_key: string;
-  ml_dsa_public_key: string;
-  valid_from: number;
-  valid_to: number;
-}
-
-export interface TrustBundle {
-  publishers: PublisherEntry[];
-  revoked_publisher_ids: string[];
 }
 
 export class BundleVerificationError extends Error {
@@ -114,23 +109,15 @@ export async function verifyBundle(
     throw new BundleVerificationError('Bundle expired', 'EXPIRED');
   }
 
-  // Publisher lookup
-  const publisher = trust.publishers.find(
-    (p) => p.publisher_id === bundle.publisher_id,
-  );
-  if (!publisher) {
-    throw new BundleVerificationError('Unknown publisher', 'UNKNOWN_PUBLISHER');
+  // Publisher lookup, revocation, and certificate window (shared trust model)
+  const check = checkPublisher(trust, bundle.publisher_id, now);
+  if ('failure' in check) {
+    if (check.failure === 'UNKNOWN_PUBLISHER') {
+      throw new BundleVerificationError('Unknown publisher', 'UNKNOWN_PUBLISHER');
+    }
+    throw new BundleVerificationError('Publisher revoked or expired', 'REVOKED_PUBLISHER');
   }
-
-  // Revocation check
-  if (trust.revoked_publisher_ids.includes(bundle.publisher_id)) {
-    throw new BundleVerificationError('Publisher revoked', 'REVOKED_PUBLISHER');
-  }
-
-  // Publisher certificate validity
-  if (now < publisher.valid_from || now > publisher.valid_to) {
-    throw new BundleVerificationError('Publisher certificate expired', 'REVOKED_PUBLISHER');
-  }
+  const { publisher } = check;
 
   // Hybrid signature verification. Import the publisher's base64url-encoded
   // public keys into the shapes hybridVerify expects (CryptoKey + Uint8Array),

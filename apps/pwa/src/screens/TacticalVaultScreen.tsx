@@ -1,206 +1,52 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { TacticalHeader } from '../components/TacticalHeader';
-
-interface Protocol {
-  id: string;
-  title: string;
-  subtitle: string;
-  category: string;
-  categoryColor: string;
-  steps: { num: string; label: string; items: string[]; critical?: boolean }[];
-  warning?: string;
-}
-
-const PROTOCOLS: Protocol[] = [
-  {
-    id: 'bleeding',
-    title: 'STOP BLEEDING',
-    subtitle: 'HEMORRHAGE CONTROL',
-    category: 'MEDICAL',
-    categoryColor: '#cc0000',
-    steps: [
-      {
-        num: '01', label: 'DIRECT PRESSURE',
-        items: [
-          'LOCATE SOURCE OF HEMORRHAGE IMMEDIATELY.',
-          'APPLY FIRM, STEADY PRESSURE WITH CLEAN GAUZE.',
-          'IF GAUZE SOAKS THROUGH, DO NOT REMOVE — ADD MORE LAYERS.',
-          'MAINTAIN PRESSURE FOR AT LEAST 5 MINUTES WITHOUT INTERRUPTION.',
-        ],
-      },
-      {
-        num: '02', label: 'ELEVATION',
-        items: [
-          'ELEVATE THE WOUNDED LIMB ABOVE HEART LEVEL.',
-          'ENSURE NO SECONDARY FRACTURES PREVENT MOVEMENT.',
-          'MONITOR DISTAL PULSE AND SKIN TEMPERATURE.',
-        ],
-      },
-      {
-        num: '03', label: 'TOURNIQUET USE', critical: true,
-        items: [
-          'APPLY ONLY IF DIRECT PRESSURE FAILS TO STOP LIFE-THREATENING BLEEDING.',
-          'POSITION 2–3 INCHES ABOVE THE WOUND (NOT ON A JOINT).',
-          'TIGHTEN UNTIL BLEEDING COMPLETELY STOPS.',
-          'MARK TIME OF APPLICATION ON PATIENT\'S FOREHEAD: [T: HH:MM].',
-        ],
-      },
-    ],
-    warning: 'NEURAL SHOCK IMMINENT. ADMINISTER HYDRATION AND MAINTAIN BODY CORE TEMPERATURE. DO NOT REMOVE TOURNIQUET ONCE APPLIED.',
-  },
-  {
-    id: 'hypothermia',
-    title: 'HYPOTHERMIA',
-    subtitle: 'COLD EXPOSURE MANAGEMENT',
-    category: 'MEDICAL',
-    categoryColor: '#2196f3',
-    steps: [
-      {
-        num: '01', label: 'REMOVE FROM COLD',
-        items: [
-          'MOVE PATIENT OUT OF WIND AND WET CONDITIONS IMMEDIATELY.',
-          'REMOVE ALL WET CLOTHING — WETNESS ACCELERATES HEAT LOSS.',
-          'SHIELD FROM GROUND WITH INSULATING LAYER (BLANKET, LEAVES, PACK).',
-        ],
-      },
-      {
-        num: '02', label: 'RE-WARMING',
-        items: [
-          'WRAP ENTIRE BODY INCLUDING HEAD — 40–50% HEAT LOSS IS VIA HEAD.',
-          'APPLY WARM (NOT HOT) OBJECTS TO NECK, ARMPITS, GROIN.',
-          'DO NOT RUB LIMBS — THIS DRIVES COLD BLOOD TO CORE.',
-          'IF CONSCIOUS: WARM SWEET LIQUIDS IN SMALL SIPS.',
-        ],
-      },
-      {
-        num: '03', label: 'MONITORING', critical: true,
-        items: [
-          'CHECK BREATHING AND PULSE EVERY 5 MINUTES.',
-          'HANDLE GENTLY — CARDIAC ARREST CAN BE TRIGGERED BY MOVEMENT.',
-          'IF NO PULSE AFTER 60 SECONDS CHECK: BEGIN CPR.',
-          'TRANSPORT HORIZONTALLY — NEVER UPRIGHT.',
-        ],
-      },
-    ],
-    warning: 'DO NOT DECLARE DEATH UNTIL PATIENT IS WARM AND UNRESPONSIVE. HYPOTHERMIC PATIENTS HAVE SURVIVED WITHOUT PULSE FOR HOURS.',
-  },
-  {
-    id: 'water',
-    title: 'WATER SAFETY',
-    subtitle: 'PURIFICATION & SOURCING',
-    category: 'SURVIVAL',
-    categoryColor: '#00ff33',
-    steps: [
-      {
-        num: '01', label: 'SOURCE PRIORITY',
-        items: [
-          'RAINWATER AND MORNING DEW: SAFEST — DRINK DIRECTLY.',
-          'RUNNING WATER UPSTREAM OF HABITATION: SECOND PRIORITY.',
-          'STANDING WATER: LAST RESORT — ALWAYS PURIFY.',
-          'AVOID WATER WITH OILY FILM, UNUSUAL COLOUR, OR DEAD ANIMALS NEARBY.',
-        ],
-      },
-      {
-        num: '02', label: 'PURIFICATION',
-        items: [
-          'BOILING: ROLLING BOIL FOR 1 MINUTE (3 MIN ABOVE 2000M ALTITUDE).',
-          'IODINE TABLETS: 5 DROPS PER LITRE, WAIT 30 MIN (60 MIN IF COLD).',
-          'IMPROVISED FILTER: LAYERS OF GRASS, CHARCOAL, SAND, GRAVEL, CLOTH.',
-          'CLEAR PLASTIC BAG IN SUNLIGHT: UV KILLS BACTERIA IN 6–8 HOURS.',
-        ],
-      },
-      {
-        num: '03', label: 'DEHYDRATION SIGNS',
-        items: [
-          'DARK URINE (AMBER OR BROWN): DRINK IMMEDIATELY.',
-          'HEADACHE + CONFUSION: SEVERE — PRIORITY REHYDRATION.',
-          'MINIMUM DAILY NEED: 2–3 LITRES IN TEMPERATE CONDITIONS.',
-          'DOUBLE IN HIGH HEAT OR PHYSICAL EXERTION.',
-        ],
-      },
-    ],
-  },
-  {
-    id: 'navigation',
-    title: 'NAVIGATION',
-    subtitle: 'DEAD RECKONING & NATURAL SIGNS',
-    category: 'MOVEMENT',
-    categoryColor: '#b8860b',
-    steps: [
-      {
-        num: '01', label: 'SUN NAVIGATION',
-        items: [
-          'NORTHERN HEMISPHERE: SUN RISES EAST, SETS WEST, PEAKS SOUTH.',
-          'STICK METHOD: PLACE STICK UPRIGHT, MARK SHADOW TIP. WAIT 15 MIN. MARK AGAIN. LINE BETWEEN MARKS IS EAST–WEST.',
-          'WATCH METHOD: POINT HOUR HAND AT SUN. BISECT ANGLE BETWEEN HOUR HAND AND 12 O\'CLOCK = SOUTH (NH).',
-        ],
-      },
-      {
-        num: '02', label: 'STAR NAVIGATION',
-        items: [
-          'NORTHERN HEMISPHERE: LOCATE POLARIS (NORTH STAR) — END OF LITTLE DIPPER HANDLE.',
-          'POLARIS IS ALWAYS WITHIN 1° OF TRUE NORTH.',
-          'SOUTHERN HEMISPHERE: SOUTHERN CROSS — EXTEND LONG AXIS 4.5× TO FIND SOUTH.',
-        ],
-      },
-      {
-        num: '03', label: 'DEAD RECKONING',
-        items: [
-          'TRACK DIRECTION OF TRAVEL USING COMPASS OR SUN/STARS.',
-          'COUNT PACES: 1KM ≈ 1,200 DOUBLE-PACES ON FLAT GROUND.',
-          'LOG: DIRECTION + DISTANCE + TIME ELAPSED AT EACH LEG.',
-          'CORRECT FOR DRIFT EVERY 30 MINUTES.',
-        ],
-      },
-    ],
-    warning: 'MOVE DURING DAWN AND DUSK — REDUCES THERMAL SIGNATURE AND VISIBILITY TO OBSERVERS.',
-  },
-  {
-    id: 'signaling',
-    title: 'SIGNALING',
-    subtitle: 'EXTRACTION & RESCUE',
-    category: 'COMMS',
-    categoryColor: '#888',
-    steps: [
-      {
-        num: '01', label: 'VISUAL SIGNALS',
-        items: [
-          'GROUND-TO-AIR: LARGE "X" = NEED MEDICAL HELP. "V" = NEED ASSISTANCE.',
-          'USE CONTRAST: DARK MATERIALS ON LIGHT GROUND OR VICE VERSA.',
-          'SIGNAL MIRROR: AIM REFLECTED SUNLIGHT AT AIRCRAFT. VISIBLE 16KM+.',
-          'FIRE: THREE FIRES IN TRIANGLE = INTERNATIONAL DISTRESS.',
-        ],
-      },
-      {
-        num: '02', label: 'AUDIBLE SIGNALS',
-        items: [
-          'WHISTLE: THREE SHORT BLASTS = DISTRESS. PAUSE. REPEAT.',
-          'CARRY WHISTLE AT ALL TIMES — AUDIBLE FURTHER THAN VOICE.',
-          'AVOID SHOUTING — TIRES QUICKLY AND REVEALS POSITION TO HOSTILES.',
-        ],
-      },
-      {
-        num: '03', label: 'RADIO / BLE PROTOCOL', critical: true,
-        items: [
-          'USE WITNESS APP: ACTIVATE SILENT ALERT FIRST — NO AUDIO EMISSION.',
-          'IF BLE DEVICE CONNECTED: SEND HASH RECEIPT VIA LORA MESH.',
-          'TRANSMIT IN SHORT BURSTS — REDUCE RF DETECTABILITY.',
-          'STANDARD CALL: LOCATION GRID REF + STATUS + EXTRACTION WINDOW.',
-        ],
-      },
-    ],
-    warning: 'ALL SIGNALS REVEAL YOUR POSITION. CONFIRM RECEIVING PARTY IS FRIENDLY BEFORE SIGNALING CONTINUOUSLY.',
-  },
-];
+import { QrScannerModal } from '../components/QrScannerModal';
+import { QrShareModal } from '../components/QrShareModal';
+import {
+  loadProtocols,
+  importKnowledgeJson,
+  getShareableKnowledgeJson,
+  type LoadedProtocol,
+} from '../store/knowledgeStore';
 
 export function TacticalVaultScreen() {
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [items, setItems] = useState<LoadedProtocol[] | null>(null);
+  const [active, setActive] = useState<LoadedProtocol | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+  const [sharePayload, setSharePayload] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const active = PROTOCOLS.find(p => p.id === activeId) ?? null;
+  useEffect(() => {
+    loadProtocols().then(setItems).catch(() => setItems([]));
+  }, []);
+
+  function flash(ok: boolean, text: string) {
+    setMsg({ ok, text });
+    setTimeout(() => setMsg(null), 4000);
+  }
+
+  async function handleImport(data: string) {
+    setShowScanner(false);
+    const res = await importKnowledgeJson(data);
+    if (res.ok) {
+      setItems(await loadProtocols().catch(() => []));
+      flash(true, `Bundle verified · ${res.count} protocols`);
+    } else {
+      flash(false, res.error ?? 'Import failed');
+    }
+  }
+
+  function handleShare() {
+    const json = getShareableKnowledgeJson();
+    if (json) setSharePayload(json);
+    else flash(false, 'No verified bundle to share yet');
+  }
 
   if (active) {
-    return <ProtocolDetail protocol={active} onBack={() => setActiveId(null)} />;
+    return <ProtocolDetail item={active} onBack={() => setActive(null)} />;
   }
+
+  const publisherName = items?.[0]?.publisherName ?? null;
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d] overflow-y-auto">
@@ -208,60 +54,118 @@ export function TacticalVaultScreen() {
 
       {/* Title */}
       <div className="px-4 pt-4 pb-3 border-b border-[#1a1a1a] shrink-0">
-        <h2 className="text-3xl font-bold text-white tracking-widest">KNOWLEDGE<br/>LIBRARY</h2>
+        <div className="flex items-start justify-between">
+          <h2 className="text-3xl font-bold text-white tracking-widest">KNOWLEDGE<br/>LIBRARY</h2>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => setShowScanner(true)}
+              className="text-[9px] font-bold tracking-widest px-2 py-1 border border-[#333] text-gray-400 hover:border-[#00ff33]/50 hover:text-[#00ff33] transition-colors"
+            >
+              IMPORT
+            </button>
+            <button
+              onClick={handleShare}
+              className="text-[9px] font-bold tracking-widest px-2 py-1 border border-[#333] text-gray-400 hover:border-[#00ff33]/50 hover:text-[#00ff33] transition-colors"
+            >
+              SHARE
+            </button>
+          </div>
+        </div>
         <p className="text-[10px] text-gray-500 tracking-widest mt-1">
-          {PROTOCOLS.length} PROTOCOLS // OFFLINE // SIGNED
+          {items === null ? 'VERIFYING…' : `${items.length} PROTOCOLS // OFFLINE // HYBRID-SIG VERIFIED`}
         </p>
       </div>
 
+      {/* Import/share feedback */}
+      {msg && (
+        <div className={`mx-4 mt-2 px-3 py-2 border text-[10px] font-bold tracking-widest ${
+          msg.ok ? 'bg-[#0d1f10] border-[#00ff33]/60 text-[#00ff33]' : 'bg-[#1a0505] border-[#cc4444] text-[#cc6666]'
+        }`}>
+          {msg.text}
+        </div>
+      )}
+
       {/* Protocol list */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
-        {PROTOCOLS.map(p => (
-          <button
-            key={p.id}
-            onClick={() => setActiveId(p.id)}
-            className="flex items-center gap-4 bg-[#111] border border-[#1e1e1e] p-4 hover:bg-[#141414] hover:border-[#00ff33]/20 transition-all text-left active:scale-[0.99]"
-          >
-            <div
-              className="w-10 h-10 flex items-center justify-center shrink-0 border"
-              style={{ borderColor: `${p.categoryColor}44`, background: `${p.categoryColor}11` }}
-            >
-              <CategoryIcon category={p.category} color={p.categoryColor} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-white font-bold tracking-widest text-[13px]">{p.title}</div>
-              <div className="text-[10px] text-gray-500 tracking-widest mt-0.5">{p.subtitle}</div>
-            </div>
-            <div className="flex flex-col items-end gap-1 shrink-0">
-              <span
-                className="text-[8px] font-bold tracking-widest px-1.5 py-0.5 border"
-                style={{ color: p.categoryColor, borderColor: `${p.categoryColor}44`, background: `${p.categoryColor}11` }}
+        {items === null ? (
+          <p className="text-gray-600 text-[11px] tracking-widest text-center py-8">
+            VERIFYING SIGNATURES…
+          </p>
+        ) : items.length === 0 ? (
+          <p className="text-gray-600 text-[11px] tracking-widest text-center py-8 leading-relaxed">
+            NO VERIFIED CONTENT.<br/>Import a signed knowledge bundle via QR.
+          </p>
+        ) : (
+          items.map((item) => {
+            const p = item.protocol;
+            return (
+              <button
+                key={item.articleId}
+                onClick={() => setActive(item)}
+                className="flex items-center gap-4 bg-[#111] border border-[#1e1e1e] p-4 hover:bg-[#141414] hover:border-[#00ff33]/20 transition-all text-left active:scale-[0.99]"
               >
-                {p.category}
-              </span>
-              <svg className="w-3.5 h-3.5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
-              </svg>
-            </div>
-          </button>
-        ))}
+                <div
+                  className="w-10 h-10 flex items-center justify-center shrink-0 border"
+                  style={{ borderColor: `${p.categoryColor}44`, background: `${p.categoryColor}11` }}
+                >
+                  <CategoryIcon category={p.category} color={p.categoryColor} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-white font-bold tracking-widest text-[13px]">{p.title}</div>
+                  <div className="text-[10px] text-gray-500 tracking-widest mt-0.5">{p.subtitle}</div>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span
+                    className="text-[8px] font-bold tracking-widest px-1.5 py-0.5 border"
+                    style={{ color: p.categoryColor, borderColor: `${p.categoryColor}44`, background: `${p.categoryColor}11` }}
+                  >
+                    {p.category}
+                  </span>
+                  <svg className="w-3.5 h-3.5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
+                  </svg>
+                </div>
+              </button>
+            );
+          })
+        )}
       </div>
 
-      {/* Footer */}
-      <div className="mx-4 mb-4 shrink-0 flex items-center justify-between border-t border-[#1a1a1a] pt-3">
-        <span className="text-[9px] text-gray-600 tracking-widest">PUBLISHER: NGO_TRUST_ALPHA</span>
-        <span className="text-[9px] text-[#00ff33]/60 tracking-widest">SIG_VERIFIED</span>
-      </div>
+      {/* Footer — real provenance */}
+      {publisherName && (
+        <div className="mx-4 mb-4 shrink-0 flex items-center justify-between border-t border-[#1a1a1a] pt-3">
+          <span className="text-[9px] text-gray-600 tracking-widest">PUBLISHER: {publisherName.toUpperCase()}</span>
+          <span className="text-[9px] text-[#00ff33]/60 tracking-widest">HASH-VERIFIED ON READ</span>
+        </div>
+      )}
+
+      {/* QR scanner for signed knowledge bundles (multi-frame capable) */}
+      {showScanner && (
+        <QrScannerModal
+          onClose={() => setShowScanner(false)}
+          onResult={(data) => { void handleImport(data); }}
+        />
+      )}
+
+      {/* Share the installed bundle to another device */}
+      {sharePayload && (
+        <QrShareModal
+          payload={sharePayload}
+          title="SHARE KNOWLEDGE BUNDLE"
+          onClose={() => setSharePayload(null)}
+        />
+      )}
     </div>
   );
 }
 
-function ProtocolDetail({ protocol, onBack }: { protocol: Protocol; onBack: () => void }) {
+function ProtocolDetail({ item, onBack }: { item: LoadedProtocol; onBack: () => void }) {
+  const protocol = item.protocol;
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d] overflow-y-auto">
       {/* Back header */}
       <header className="flex items-center gap-3 px-4 py-3 bg-[#0d0d0d] border-b border-[#1a1a1a] shrink-0">
-        <button onClick={onBack} className="text-[#00ff33] p-1">
+        <button onClick={onBack} className="text-[#00ff33] p-1" aria-label="Back to library">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/>
           </svg>
@@ -277,7 +181,7 @@ function ProtocolDetail({ protocol, onBack }: { protocol: Protocol; onBack: () =
         </div>
       </header>
 
-      {/* Protocol info */}
+      {/* Protocol info — provenance is real */}
       <div className="mx-4 mt-4 mb-4 bg-[#111] border border-[#1e1e1e] p-4 shrink-0">
         <div className="flex justify-between items-start">
           <div>
@@ -287,19 +191,16 @@ function ProtocolDetail({ protocol, onBack }: { protocol: Protocol; onBack: () =
             </div>
           </div>
           <div className="text-right">
-            <div className="text-[9px] text-gray-500 tracking-widest">STATUS</div>
+            <div className="text-[9px] text-gray-500 tracking-widest">CONTENT</div>
             <div className="flex items-center gap-1.5 mt-0.5">
               <div className="w-2 h-2 bg-[#00ff33]"/>
-              <span className="text-[#00ff33] font-bold tracking-widest text-[11px]">ACTIVE</span>
+              <span className="text-[#00ff33] font-bold tracking-widest text-[11px]">HASH VERIFIED</span>
             </div>
           </div>
         </div>
-        <div className="mt-3 flex gap-1">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className={`flex-1 h-1.5 ${i < 9 ? 'bg-[#00ff33]' : 'bg-[#1e1e1e]'}`}/>
-          ))}
+        <div className="mt-2 text-[9px] text-gray-500 tracking-widest">
+          BUNDLE: {item.bundleTitle.toUpperCase()}
         </div>
-        <div className="mt-1 text-[9px] text-gray-500 tracking-widest">ENCRYPTION: 256-BIT_AES_LOCKED</div>
       </div>
 
       {/* Steps */}
@@ -328,15 +229,15 @@ function ProtocolDetail({ protocol, onBack }: { protocol: Protocol; onBack: () =
         )}
       </div>
 
-      {/* Footer */}
+      {/* Footer — real provenance */}
       <div className="mx-4 mb-4 flex justify-between items-center border-t border-[#1e1e1e] pt-3 shrink-0">
         <div>
           <div className="text-[9px] text-gray-600 tracking-widest">PUBLISHER</div>
-          <div className="text-[9px] text-gray-400 tracking-widest">NGO_TRUST_ALPHA</div>
+          <div className="text-[9px] text-gray-400 tracking-widest">{item.publisherName.toUpperCase()}</div>
         </div>
         <div className="text-right">
           <div className="text-[9px] text-gray-600 tracking-widest">SIGNATURE</div>
-          <div className="text-[9px] text-[#00ff33] tracking-widest">SIG_DELTA_VERIFIED</div>
+          <div className="text-[9px] text-[#00ff33] tracking-widest">ECDSA + ML-DSA VERIFIED</div>
         </div>
       </div>
     </div>
@@ -398,4 +299,3 @@ function CategoryIcon({ category, color }: { category: string; color: string }) 
     </svg>
   );
 }
-

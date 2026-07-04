@@ -1,8 +1,8 @@
 # Witness — Plane D: Offline Knowledge Library
 
-**Version:** 0.1 (draft)
-**Date:** 2026-03-27
-**Status:** Proposal — pending review
+**Version:** 0.2
+**Date:** 2026-03-27 (updated 2026-07-05)
+**Status:** D.1 implemented (`@witness/knowledge-library`) — signed bundles verified with the shared hybrid ECDSA P-256 + ML-DSA-65 trust chain (not the Ed25519 named below; "no additional trust model" wins), hash-verified reads, no read history, panic-purged. D.2 user clips, encryption at rest, and mesh chunk distribution remain future work.
 
 ---
 
