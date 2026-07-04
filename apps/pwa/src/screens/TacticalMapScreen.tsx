@@ -5,6 +5,11 @@ import {
   registerPMTilesProtocol,
   getOPFSTileFile,
   buildOfflineMapStyle,
+  downloadRegionPack,
+  getInstalledRegion,
+  deleteRegionPack,
+  type RegionInfo,
+  type RegionDownloadProgress,
   type ResourceLocation,
   type ResourceStatus,
   type ResourceType,
@@ -117,6 +122,51 @@ export function TacticalMapScreen() {
   const [sharePayload, setSharePayload] = useState<string | null>(null);
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // Offline tile pack management
+  const [showTiles, setShowTiles] = useState(false);
+  const [region, setRegion] = useState<RegionInfo | null>(null);
+  const [dlProgress, setDlProgress] = useState<RegionDownloadProgress | null>(null);
+  const [dlError, setDlError] = useState<string | null>(null);
+  const [tileUrl, setTileUrl] = useState('');
+  const [mapEpoch, setMapEpoch] = useState(0); // bump to re-init the map with a new style
+  const dlAbortRef = useRef<AbortController | null>(null);
+  const [usingOffline, setUsingOffline] = useState(false);
+
+  useEffect(() => {
+    getInstalledRegion().then(setRegion).catch(() => {});
+  }, [mapEpoch]);
+
+  async function startTileDownload() {
+    const url = tileUrl.trim();
+    if (!url || dlAbortRef.current) return;
+    setDlError(null);
+    setDlProgress({ received: 0, total: null });
+    const ctrl = new AbortController();
+    dlAbortRef.current = ctrl;
+    try {
+      await downloadRegionPack(url, {
+        onProgress: setDlProgress,
+        signal: ctrl.signal,
+      });
+      setTileUrl('');
+      setMapEpoch((e) => e + 1); // remount map onto the new offline pack
+    } catch (err) {
+      setDlError(err instanceof Error ? err.message : 'Download failed');
+    } finally {
+      dlAbortRef.current = null;
+      setDlProgress(null);
+    }
+  }
+
+  function cancelTileDownload() {
+    dlAbortRef.current?.abort();
+  }
+
+  async function removeTilePack() {
+    await deleteRegionPack().catch(() => {});
+    setMapEpoch((e) => e + 1);
+  }
+
   function handleShare() {
     const json = getShareableBundleJson();
     if (json) {
@@ -184,6 +234,7 @@ export function TacticalMapScreen() {
         return;
       }
       blobUrl = resolved.blobUrl;
+      setUsingOffline(resolved.blobUrl !== null);
 
       map = new maplibregl.Map({
         container: containerRef.current,
@@ -236,8 +287,9 @@ export function TacticalMapScreen() {
       if (blobUrl) URL.revokeObjectURL(blobUrl);
       mapRef.current = null;
     };
+  // Re-runs when mapEpoch bumps (tile pack installed/removed) to re-resolve the style.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mapEpoch]);
 
   const flyHome = () => {
     if (coords && mapRef.current) {
@@ -276,6 +328,16 @@ export function TacticalMapScreen() {
             className="text-[9px] font-bold tracking-widest px-2 py-1 border border-[#333] text-gray-400 hover:border-[#00ff33]/50 hover:text-[#00ff33] transition-colors"
           >
             SHARE
+          </button>
+          <button
+            onClick={() => setShowTiles(true)}
+            className={`text-[9px] font-bold tracking-widest px-2 py-1 border transition-colors ${
+              usingOffline
+                ? 'bg-[#0d1f10] border-[#00ff33]/50 text-[#00ff33]'
+                : 'border-[#b8860b]/60 text-[#b8860b] hover:bg-[#b8860b]/10'
+            }`}
+          >
+            TILES
           </button>
           <button
             onClick={flyHome}
@@ -444,6 +506,117 @@ export function TacticalMapScreen() {
           title="SHARE RESOURCE BUNDLE"
           onClose={() => setSharePayload(null)}
         />
+      )}
+
+      {/* Offline tile pack manager */}
+      {showTiles && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-[#0d0d0d]">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] shrink-0">
+            <span className="text-[#00ff33] font-bold tracking-[0.15em] text-[13px]">OFFLINE TILES</span>
+            <button
+              onClick={() => setShowTiles(false)}
+              aria-label="Close tile manager"
+              className="text-gray-400 hover:text-white p-1"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+            {/* Current basemap status — honest about the online fallback */}
+            <div className={`border p-3 ${region ? 'bg-[#0d1f10] border-[#00ff33]/40' : 'bg-[#1a1205] border-[#b8860b]/50'}`}>
+              {region ? (
+                <>
+                  <div className="text-[10px] font-bold tracking-widest text-[#00ff33] mb-1">OFFLINE PACK INSTALLED</div>
+                  <div className="text-[11px] text-gray-300 tracking-wider">
+                    {region.regionName} · {(region.sizeBytes / 1e6).toFixed(1)} MB
+                  </div>
+                  <div className="text-[9px] text-gray-500 tracking-wide mt-1">Map renders with zero network requests.</div>
+                </>
+              ) : (
+                <>
+                  <div className="text-[10px] font-bold tracking-widest text-[#b8860b] mb-1">NO OFFLINE PACK</div>
+                  <div className="text-[9px] text-gray-400 tracking-wide leading-relaxed">
+                    The map is using the online CARTO basemap — it needs internet and each tile request
+                    reveals your IP to the tile server. Download a region pack for fully offline, silent maps.
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Download */}
+            <div className="bg-[#111] border border-[#1e1e1e] p-3">
+              <div className="text-[8px] text-gray-600 tracking-widest mb-1">REGION PACK URL (.pmtiles)</div>
+              <div className="flex gap-1.5">
+                <input
+                  value={tileUrl}
+                  onChange={(e) => setTileUrl(e.target.value)}
+                  placeholder="https://ngo.example/packs/my-region.pmtiles"
+                  spellCheck={false}
+                  disabled={dlProgress !== null}
+                  className="flex-1 min-w-0 bg-[#0d0d0d] border border-[#1e1e1e] px-2 py-1.5 text-[10px] text-gray-300 font-sentry tracking-tight focus:border-[#00ff33]/50 outline-none disabled:opacity-50"
+                />
+                {dlProgress === null ? (
+                  <button
+                    onClick={() => void startTileDownload()}
+                    disabled={!tileUrl.trim()}
+                    className="text-[9px] tracking-widest border border-[#00ff33]/50 text-[#00ff33] px-2.5 hover:bg-[#00ff33]/10 disabled:border-[#333] disabled:text-gray-600"
+                  >
+                    DOWNLOAD
+                  </button>
+                ) : (
+                  <button
+                    onClick={cancelTileDownload}
+                    className="text-[9px] tracking-widest border border-[#cc4444] text-[#cc4444] px-2.5 hover:bg-[#cc4444]/10"
+                  >
+                    CANCEL
+                  </button>
+                )}
+              </div>
+
+              {dlProgress && (
+                <div className="mt-3">
+                  <div className="flex justify-between text-[9px] text-gray-400 tracking-widest mb-1 tabular-nums">
+                    <span>{(dlProgress.received / 1e6).toFixed(1)} MB</span>
+                    <span>
+                      {dlProgress.total
+                        ? `${Math.floor((dlProgress.received / dlProgress.total) * 100)}% of ${(dlProgress.total / 1e6).toFixed(0)} MB`
+                        : 'SIZE UNKNOWN'}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-[#1a1a1a]">
+                    <div
+                      className="h-full bg-[#00ff33] transition-all"
+                      style={{ width: dlProgress.total ? `${Math.min(100, (dlProgress.received / dlProgress.total) * 100)}%` : '15%' }}
+                    />
+                  </div>
+                  <div className="text-[8px] text-gray-600 tracking-wide mt-1">
+                    Interrupted downloads resume from where they stopped.
+                  </div>
+                </div>
+              )}
+
+              {dlError && <p className="mt-2 text-[10px] text-[#cc6666] tracking-wide">{dlError}</p>}
+
+              <p className="mt-3 text-[8px] text-gray-600 tracking-wide leading-relaxed">
+                Packs are single-file PMTiles extracts (50–500 MB per region), produced with
+                `pmtiles extract` from OpenStreetMap builds and hosted by your organisation.
+                Also transferable from another device via Wi-Fi Direct or pre-loaded by field staff.
+              </p>
+            </div>
+
+            {region && dlProgress === null && (
+              <button
+                onClick={() => void removeTilePack()}
+                className="text-[10px] tracking-widest border border-[#cc4444]/60 text-[#cc4444] px-3 py-2 hover:bg-[#cc4444]/10 self-start"
+              >
+                DELETE PACK ({region.regionName})
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

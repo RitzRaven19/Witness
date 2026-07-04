@@ -40,3 +40,17 @@ export {
   MAP_DB_NAME,
   MAP_DB_VERSION,
 } from './map-store.js';
+
+// Regional PMTiles pack download (OPFS, resumable)
+export {
+  downloadRegionPack,
+  getInstalledRegion,
+  deleteRegionPack,
+  regionNameFromUrl,
+  isPmtilesHeader,
+  pumpToWriter,
+  RegionDownloadError,
+  type RegionInfo,
+  type RegionDownloadProgress,
+  type PumpOptions,
+} from './region-download.js';
