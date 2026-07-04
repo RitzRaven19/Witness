@@ -135,7 +135,7 @@ export function SignalScreen() {
           </p>
         )}
         <p className="mt-2 text-[9px] text-gray-600 tracking-wide leading-relaxed">
-          Evidence receipts hop device-to-device over LoRa until a connected node forwards them. Only the signed hash travels — never the media.
+          Evidence receipts hop device-to-device over LoRa until a connected node forwards them. Only the signed hash travels — never the media. Works with stock Meshtastic boards (Heltec, T-Beam, RAK) over BLE or USB-C.
         </p>
 
         {/* Mesh provisioning */}

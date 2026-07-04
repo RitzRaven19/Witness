@@ -69,6 +69,12 @@ export {
   FrameReader,
   FrameDispatcher,
 } from './transport.js';
+export {
+  MeshtasticTransport,
+  PRIVATE_APP_PORTNUM,
+  type MeshtasticLink,
+  type MeshtasticTransportOptions,
+} from './meshtastic-transport.js';
 export { SerialTransport, type SerialTransportOptions } from './serial-transport.js';
 export {
   BleTransport,

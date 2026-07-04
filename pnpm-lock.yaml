@@ -131,6 +131,15 @@ importers:
 
   packages/lora-dtn:
     dependencies:
+      '@meshtastic/core':
+        specifier: ^2.6.7
+        version: 2.6.7
+      '@meshtastic/transport-web-bluetooth':
+        specifier: ^0.1.5
+        version: 0.1.5
+      '@meshtastic/transport-web-serial':
+        specifier: ^0.2.5
+        version: 0.2.5
       '@witness/crypto-core':
         specifier: workspace:*
         version: link:../crypto-core
@@ -1225,6 +1234,15 @@ packages:
   '@maplibre/vt-pbf@4.3.0':
     resolution: {integrity: sha512-jIvp8F5hQCcreqOOpEt42TJMUlsrEcpf/kI1T2v85YrQRV6PPXUcEXUg5karKtH6oh47XJZ4kHu56pUkOuqA7w==}
 
+  '@meshtastic/core@2.6.7':
+    resolution: {integrity: sha512-0iP/gfzhqVWBzTpJNn2dHp2BiUSQq5xPUDCtssBqI9Y/X64sQ2cPDCKoyGsFPn8VXrJG3B/lQd/yPhg0GytATA==}
+
+  '@meshtastic/transport-web-bluetooth@0.1.5':
+    resolution: {integrity: sha512-dWbGLiM1rKppp0PqsMh2HENkaqnUeZe1HFpy6heE6crA+L9N+XruI9RLEv4u2Cypc9s+Flut5inNxEbuQfFRHQ==}
+
+  '@meshtastic/transport-web-serial@0.2.5':
+    resolution: {integrity: sha512-AaIEfHONjcBK9HgDtg2Mtmq+3jgVIJfTIISxKfXmN3EdhH1WNhu9d6ZI3VSB9T8KD7Bz8wzgQZmcyDIU89tUyQ==}
+
   '@noble/hashes@1.6.0':
     resolution: {integrity: sha512-YUULf0Uk4/mAA89w+k3+yUYh6NrEvxZa5T6SY3wlMvE2chHkxFUUIDI8/XW1QSC357iA5pSnqt7XEhvFOqmDyQ==}
     engines: {node: ^14.21.3 || >=16}
@@ -1504,6 +1522,12 @@ packages:
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
+  '@types/w3c-web-serial@1.0.8':
+    resolution: {integrity: sha512-QQOT+bxQJhRGXoZDZGLs3ksLud1dMNnMiSQtBA0w8KXvLpXX4oM4TZb6J0GgJ8UbCaHo5s9/4VQT8uXy9JER2A==}
+
+  '@types/web-bluetooth@0.0.20':
+    resolution: {integrity: sha512-g9gZnnXVq7gM7v3tJCWV/qw7w+KeOlSHAhgF9RytFyifW6AF61hdT2ucrYhPq9hLs5JIryeupHV3qGk95dH9ow==}
+
   '@vitejs/plugin-react@4.7.0':
     resolution: {integrity: sha512-gUu9hwfWvvEDBBmgtAowQCojwZmJ5mcLn3aufeCsitijs3+f2NsrPtlAWIR6OPiqljl96GVCUbLe0HyqIpVaoA==}
     engines: {node: ^14.18.0 || >=16.0.0}
@@ -1742,6 +1766,15 @@ packages:
 
   core-js-compat@3.49.0:
     resolution: {integrity: sha512-VQXt1jr9cBz03b331DFDCCP90b3fanciLkgiOoy8SBHy06gNf+vQ1A3WFLqG7I8TipYIKeYK9wxd0tUrvHcOZA==}
+
+  crc@4.3.2:
+    resolution: {integrity: sha512-uGDHf4KLLh2zsHa8D8hIQ1H/HtFQhyHrc0uhHBcoKGol/Xnb+MPYfUMw7cvON6ze/GUESTudKayDcJC5HnJv1A==}
+    engines: {node: '>=12'}
+    peerDependencies:
+      buffer: '>=6.0.3'
+    peerDependenciesMeta:
+      buffer:
+        optional: true
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -4236,6 +4269,26 @@ snapshots:
       pbf: 4.0.1
       supercluster: 8.0.1
 
+  '@meshtastic/core@2.6.7':
+    dependencies:
+      crc: 4.3.2
+    transitivePeerDependencies:
+      - buffer
+
+  '@meshtastic/transport-web-bluetooth@0.1.5':
+    dependencies:
+      '@meshtastic/core': 2.6.7
+      '@types/web-bluetooth': 0.0.20
+    transitivePeerDependencies:
+      - buffer
+
+  '@meshtastic/transport-web-serial@0.2.5':
+    dependencies:
+      '@meshtastic/core': 2.6.7
+      '@types/w3c-web-serial': 1.0.8
+    transitivePeerDependencies:
+      - buffer
+
   '@noble/hashes@1.6.0': {}
 
   '@noble/post-quantum@0.2.1':
@@ -4473,6 +4526,10 @@ snapshots:
       '@types/geojson': 7946.0.16
 
   '@types/trusted-types@2.0.7': {}
+
+  '@types/w3c-web-serial@1.0.8': {}
+
+  '@types/web-bluetooth@0.0.20': {}
 
   '@vitejs/plugin-react@4.7.0(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(terser@5.46.1)(tsx@4.23.0))':
     dependencies:
@@ -4743,6 +4800,8 @@ snapshots:
   core-js-compat@3.49.0:
     dependencies:
       browserslist: 4.28.1
+
+  crc@4.3.2: {}
 
   cross-spawn@7.0.6:
     dependencies:

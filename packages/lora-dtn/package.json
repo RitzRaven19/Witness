@@ -17,6 +17,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@meshtastic/core": "^2.6.7",
+    "@meshtastic/transport-web-bluetooth": "^0.1.5",
+    "@meshtastic/transport-web-serial": "^0.2.5",
     "@witness/crypto-core": "workspace:*",
     "idb": "^8.0.0"
   },

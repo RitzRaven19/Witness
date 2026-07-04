@@ -4,7 +4,10 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "declaration": true,
-    "declarationMap": true
+    "declarationMap": true,
+    // @meshtastic/core's published declarations reference @meshtastic/protobufs,
+    // whose "types" entry points at a file missing from the npm tarball.
+    "skipLibCheck": true
   },
   "include": ["src"]
 }

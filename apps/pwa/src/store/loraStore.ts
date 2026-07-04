@@ -23,8 +23,7 @@ import {
   generatePacketId,
   enqueueHashReceipt,
   rebroadcastDelayMs,
-  SerialTransport,
-  BleTransport,
+  MeshtasticTransport,
   type HashReceipt,
   type LoRaTransport,
 } from '@witness/lora-dtn';
@@ -221,13 +220,16 @@ class LoraStore {
     this.emit({ pending: (await q.pending()).length });
   }
 
-  /** Connect a companion device over USB-C (Web Serial) or BLE (Web Bluetooth). */
+  /**
+   * Connect a companion Meshtastic board over USB-C (Web Serial) or BLE
+   * (Web Bluetooth). Stock Meshtastic firmware — our DTN frames ride the
+   * PRIVATE_APP port and are flooded by the whole Meshtastic mesh.
+   */
   async connect(kind: TransportKind): Promise<void> {
     if (this.status.conn === 'connected' || this.status.conn === 'connecting') return;
     this.emit({ conn: 'connecting', kind, lastError: null });
 
-    const transport: LoRaTransport =
-      kind === 'serial' ? new SerialTransport() : new BleTransport();
+    const transport: LoRaTransport = new MeshtasticTransport(kind);
     try {
       await transport.connect();
     } catch (err) {
@@ -245,7 +247,7 @@ class LoraStore {
     this.emit({
       conn: 'connected',
       kind,
-      deviceLabel: kind === 'serial' ? 'USB-C LoRa board' : 'BLE LoRa board',
+      deviceLabel: kind === 'serial' ? 'Meshtastic (USB-C)' : 'Meshtastic (BLE)',
     });
 
     await this.flushPending();
