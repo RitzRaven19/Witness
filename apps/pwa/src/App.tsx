@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { processUploadQueue } from './store/uploadQueue';
+import { migrateLegacyEvidenceKeys } from './store/evidenceStore';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { DesktopScreen } from './screens/DesktopScreen';
 import { HomeScreen } from './screens/HomeScreen';
@@ -35,6 +36,8 @@ export function App() {
   // Drain the upload queue on startup, on connectivity restore, and when
   // the service worker background-sync fires a WITNESS_SYNC_UPLOAD message.
   useEffect(() => {
+    // Phase 2B: seal any legacy raw evidence keys before anything else runs.
+    migrateLegacyEvidenceKeys().catch(() => {});
     processUploadQueue().catch(() => {});
 
     const onOnline = () => processUploadQueue().catch(() => {});

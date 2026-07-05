@@ -1,11 +1,15 @@
 /**
- * Persistent device signing key — an ECDSA P-256 + ML-DSA-65 hybrid key pair
- * used to sign HashReceipts before they hop out over the LoRa DTN mesh.
+ * Persistent device key material, stored in the `witness-keys` IndexedDB and
+ * wiped by panic purge. Three independent key pairs:
  *
- * Generated once and stored in its own IndexedDB (`witness-keys`). Like the
- * per-evidence AES keys in db.ts, the private material is currently stored
- * unwrapped — wrapping under a device master key is Phase 2B. The store is
- * included in the panic purge routine.
+ *  - Hybrid signing key (ECDSA P-256 + ML-DSA-65): signs HashReceipts.
+ *  - Messaging ECDH key: the contact key mesh messages are sealed to.
+ *  - VAULT ECDH key (Phase 2B, architecture §4.4 adapted): per-evidence AES
+ *    keys are sealed to its PUBLIC key at capture, so capture never needs a
+ *    secret and works while the vault is locked. The PRIVATE key — the only
+ *    thing that can recover evidence keys — is wrapped under an Argon2id
+ *    passphrase once the user sets one. Before that it is stored plain, and
+ *    the Settings screen says so honestly.
  */
 
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
@@ -21,13 +25,24 @@ import {
   exportEcdhPrivateKey,
   importEcdhPrivateKey,
   importEcdhPublicKey,
+  sealToPublicKey,
+  openSealed,
+  importKey,
+  wrapBytesWithPassphrase,
+  unwrapBytesWithPassphrase,
+  bytesToHex,
+  hexToBytes,
   type HybridKeyPair,
+  type PassphraseWrapped,
 } from '@witness/crypto-core';
 
 export const KEYS_DB_NAME = 'witness-keys';
 const KEYS_STORE = 'keys';
 const DEVICE_ID = 'device';
 const ECDH_ID = 'device-ecdh';
+const VAULT_PUB_ID = 'vault-pub';
+const VAULT_PRIV_PLAIN_ID = 'vault-priv-plain';
+const VAULT_PRIV_WRAPPED_ID = 'vault-priv-wrapped';
 
 interface StoredDeviceKey {
   id: string;
@@ -37,6 +52,10 @@ interface StoredDeviceKey {
   mldsaPublic?: Uint8Array;
   ecdhPkcs8?: ArrayBuffer; // ECDH P-256 private key (contact/messaging key)
   ecdhRaw?: Uint8Array; // ECDH P-256 public key (raw uncompressed point)
+  // Passphrase wrap of the vault private key (PassphraseWrapped fields)
+  wrappedHex?: string;
+  ivHex?: string;
+  saltHex?: string;
 }
 
 interface KeysDB extends DBSchema {
@@ -45,6 +64,9 @@ interface KeysDB extends DBSchema {
 
 let cached: HybridKeyPair | null = null;
 let cachedEcdh: CryptoKeyPair | null = null;
+let cachedVaultPub: CryptoKey | null = null;
+/** Unlocked vault private key — session memory only, never persisted unlocked once a passphrase is set. */
+let sessionVaultPriv: CryptoKey | null = null;
 
 async function getDb(): Promise<IDBPDatabase<KeysDB>> {
   return openDB<KeysDB>(KEYS_DB_NAME, 1, {
@@ -130,8 +152,136 @@ export async function getDeviceEcdhPublicRaw(): Promise<Uint8Array> {
   return exportEcdhPublicKey((await getDeviceEcdhKey()).publicKey);
 }
 
+// ── Vault key (Phase 2B): evidence keys sealed to this pair ────────────────
+
+export type VaultStatus = 'unprotected' | 'locked' | 'unlocked';
+
+/** Create the vault pair on first use: public raw + private pkcs8 (plain until a passphrase is set). */
+async function ensureVaultKeys(db: IDBPDatabase<KeysDB>): Promise<void> {
+  const pub = await db.get(KEYS_STORE, VAULT_PUB_ID);
+  if (pub?.ecdhRaw) return;
+  const kp = await generateEcdhKeyPair();
+  const [raw, pkcs8] = await Promise.all([
+    exportEcdhPublicKey(kp.publicKey),
+    exportEcdhPrivateKey(kp.privateKey),
+  ]);
+  await db.put(KEYS_STORE, { id: VAULT_PUB_ID, ecdhRaw: raw });
+  await db.put(KEYS_STORE, { id: VAULT_PRIV_PLAIN_ID, ecdhPkcs8: pkcs8 });
+}
+
+async function getVaultPublicKey(): Promise<CryptoKey> {
+  if (cachedVaultPub) return cachedVaultPub;
+  const db = await getDb();
+  await ensureVaultKeys(db);
+  const rec = await db.get(KEYS_STORE, VAULT_PUB_ID);
+  if (!rec?.ecdhRaw) throw new Error('vault public key missing');
+  cachedVaultPub = await importEcdhPublicKey(rec.ecdhRaw);
+  return cachedVaultPub;
+}
+
+/**
+ * Seal a raw per-evidence AES key to the vault public key. Needs no secret,
+ * so capture works even while the vault is locked. Returns hex of the sealed
+ * box (ephemeral_pub ‖ iv ‖ ct+tag).
+ */
+export async function sealEvidenceKey(rawKey: ArrayBuffer): Promise<string> {
+  const pub = await getVaultPublicKey();
+  return bytesToHex(await sealToPublicKey(pub, new Uint8Array(rawKey)));
+}
+
+/** The vault private key if it is currently available, else null. */
+async function getVaultPrivateKey(): Promise<CryptoKey | null> {
+  if (sessionVaultPriv) return sessionVaultPriv;
+  const db = await getDb();
+  await ensureVaultKeys(db);
+  const plain = await db.get(KEYS_STORE, VAULT_PRIV_PLAIN_ID);
+  if (plain?.ecdhPkcs8) {
+    sessionVaultPriv = await importEcdhPrivateKey(plain.ecdhPkcs8);
+    return sessionVaultPriv;
+  }
+  return null; // passphrase-wrapped and not unlocked this session
+}
+
+export async function getVaultStatus(): Promise<VaultStatus> {
+  const db = await getDb();
+  await ensureVaultKeys(db);
+  const wrapped = await db.get(KEYS_STORE, VAULT_PRIV_WRAPPED_ID);
+  if (!wrapped) return 'unprotected';
+  return sessionVaultPriv ? 'unlocked' : 'locked';
+}
+
+/**
+ * Protect the vault private key under an Argon2id passphrase: the plain copy
+ * is replaced by the wrap, so recovering evidence keys from a seized device
+ * requires the passphrase. Existing sealed evidence keys are unaffected
+ * (they are sealed to the public key, which does not change).
+ */
+export async function setVaultPassphrase(passphrase: string): Promise<void> {
+  if (passphrase.length < 8) throw new Error('Passphrase must be at least 8 characters');
+  const db = await getDb();
+  await ensureVaultKeys(db);
+  if (await db.get(KEYS_STORE, VAULT_PRIV_WRAPPED_ID)) {
+    throw new Error('Passphrase already set — use change instead');
+  }
+  const plain = await db.get(KEYS_STORE, VAULT_PRIV_PLAIN_ID);
+  if (!plain?.ecdhPkcs8) throw new Error('vault private key missing');
+
+  const wrapped = await wrapBytesWithPassphrase(passphrase, plain.ecdhPkcs8);
+  await db.put(KEYS_STORE, { id: VAULT_PRIV_WRAPPED_ID, ...wrapped });
+  await db.delete(KEYS_STORE, VAULT_PRIV_PLAIN_ID);
+  sessionVaultPriv = await importEcdhPrivateKey(plain.ecdhPkcs8);
+}
+
+/** Unlock the vault for this session. Returns false on a wrong passphrase. */
+export async function unlockVault(passphrase: string): Promise<boolean> {
+  const db = await getDb();
+  const rec = await db.get(KEYS_STORE, VAULT_PRIV_WRAPPED_ID);
+  if (!rec?.wrappedHex || !rec.ivHex || !rec.saltHex) return false;
+  const wrapped: PassphraseWrapped = {
+    wrappedHex: rec.wrappedHex,
+    ivHex: rec.ivHex,
+    saltHex: rec.saltHex,
+  };
+  const pkcs8 = await unwrapBytesWithPassphrase(passphrase, wrapped);
+  if (!pkcs8) return false;
+  sessionVaultPriv = await importEcdhPrivateKey(pkcs8);
+  return true;
+}
+
+export function lockVault(): void {
+  sessionVaultPriv = null;
+}
+
+/** Re-wrap the vault private key under a new passphrase. */
+export async function changeVaultPassphrase(
+  oldPassphrase: string,
+  newPassphrase: string,
+): Promise<boolean> {
+  if (newPassphrase.length < 8) throw new Error('Passphrase must be at least 8 characters');
+  if (!(await unlockVault(oldPassphrase))) return false;
+  const db = await getDb();
+  const pkcs8 = await exportEcdhPrivateKey(sessionVaultPriv!);
+  const wrapped = await wrapBytesWithPassphrase(newPassphrase, pkcs8);
+  await db.put(KEYS_STORE, { id: VAULT_PRIV_WRAPPED_ID, ...wrapped });
+  return true;
+}
+
+/**
+ * Recover a per-evidence AES key from its sealed box. Requires the vault to
+ * be unprotected or unlocked; returns null otherwise (or if the box is not
+ * addressed to this vault). Future export/decrypt flows build on this.
+ */
+export async function unsealEvidenceKey(sealedHex: string): Promise<CryptoKey | null> {
+  const priv = await getVaultPrivateKey();
+  if (!priv) return null;
+  const raw = await openSealed(priv, hexToBytes(sealedHex));
+  return raw ? importKey(raw.slice().buffer as ArrayBuffer) : null;
+}
+
 /** Drop the in-memory cache (call after a panic purge deletes the DB). */
 export function resetDeviceKeyCache(): void {
   cached = null;
   cachedEcdh = null;
+  cachedVaultPub = null;
+  sessionVaultPriv = null;
 }

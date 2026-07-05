@@ -9,7 +9,14 @@ export interface EvidenceRecord {
   type: EvidenceType;
   hash: string;          // SHA-256 hex of plaintext
   ivHex: string;         // AES-GCM IV as hex
-  keyHex: string;        // Raw AES key as hex — TODO: wrap under device master key in Phase 2B
+  /**
+   * Per-evidence AES key, SEALED to the device vault public key (ECDH sealed
+   * box, hex — Phase 2B, architecture §4.4). Recovery needs the vault private
+   * key, which is passphrase-wrapped once the user sets one in Settings.
+   */
+  sealedKeyHex: string;
+  /** Legacy raw AES key hex (pre-Phase-2B records); migrated and stripped on startup. */
+  keyHex?: string;
   capturedAt: number;    // Unix ms
   sizeBytes: number;     // Plaintext size
   status: EvidenceStatus;

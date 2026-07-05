@@ -1,5 +1,27 @@
+import { hexToBytes } from '@witness/crypto-core';
 import { getDb, closeDb, type EvidenceRecord, type EvidenceStatus } from './db';
-import { resetDeviceKeyCache } from './deviceKey';
+import { resetDeviceKeyCache, sealEvidenceKey } from './deviceKey';
+
+/**
+ * Phase 2B migration: any evidence record still carrying a legacy raw AES key
+ * gets that key sealed to the vault public key, and the raw hex is stripped.
+ * Idempotent; called once at startup. Returns the number migrated.
+ */
+export async function migrateLegacyEvidenceKeys(): Promise<number> {
+  const db = await getDb();
+  const all = await db.getAll('evidence');
+  let migrated = 0;
+  for (const rec of all) {
+    if (!rec.keyHex) continue;
+    if (!rec.sealedKeyHex) {
+      rec.sealedKeyHex = await sealEvidenceKey(hexToBytes(rec.keyHex).buffer as ArrayBuffer);
+    }
+    delete rec.keyHex;
+    await db.put('evidence', rec);
+    migrated += 1;
+  }
+  return migrated;
+}
 
 export async function addEvidence(record: EvidenceRecord): Promise<void> {
   const db = await getDb();

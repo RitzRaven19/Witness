@@ -6,3 +6,4 @@ export * from './custody-log.js';
 export * from './pqc.js';
 export * from './ecdh.js';
 export * from './trust.js';
+export * from './keywrap.js';

@@ -2,6 +2,14 @@ import { useEffect, useState } from 'react';
 import { TacticalHeader } from '../components/TacticalHeader';
 import { useLoraMesh } from '../hooks/useLoraMesh';
 import { getAllEvidence } from '../store/evidenceStore';
+import {
+  getVaultStatus,
+  setVaultPassphrase,
+  changeVaultPassphrase,
+  unlockVault,
+  lockVault,
+  type VaultStatus,
+} from '../store/deviceKey';
 
 interface Props {
   pin: string;
@@ -26,7 +34,42 @@ export function SettingsScreen({ pin, onPurge }: Props) {
   const [ingestInput, setIngestInput] = useState('');
   const [configMsg, setConfigMsg] = useState<string | null>(null);
 
+  const [vaultStatus, setVaultStatus] = useState<VaultStatus | null>(null);
+  const [passA, setPassA] = useState('');
+  const [passB, setPassB] = useState('');
+  const [vaultMsg, setVaultMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  function refreshVault() {
+    getVaultStatus().then(setVaultStatus).catch(() => {});
+  }
+
+  async function handleVaultAction() {
+    setVaultMsg(null);
+    try {
+      if (vaultStatus === 'unprotected') {
+        if (passA !== passB) throw new Error('Passphrases do not match');
+        await setVaultPassphrase(passA);
+        setVaultMsg({ ok: true, text: 'Vault passphrase set — evidence keys now require it' });
+      } else if (vaultStatus === 'locked') {
+        const ok = await unlockVault(passA);
+        if (!ok) throw new Error('Wrong passphrase');
+        setVaultMsg({ ok: true, text: 'Vault unlocked for this session' });
+      } else if (vaultStatus === 'unlocked') {
+        if (!passA || !passB) throw new Error('Enter current and new passphrase');
+        const ok = await changeVaultPassphrase(passA, passB);
+        if (!ok) throw new Error('Wrong current passphrase');
+        setVaultMsg({ ok: true, text: 'Passphrase changed' });
+      }
+      setPassA('');
+      setPassB('');
+      refreshVault();
+    } catch (err) {
+      setVaultMsg({ ok: false, text: err instanceof Error ? err.message : 'Failed' });
+    }
+  }
+
   useEffect(() => {
+    refreshVault();
     getAllEvidence().then((all) => setEvidenceCount(all.length)).catch(() => {});
     navigator.storage?.estimate?.().then((est) => {
       setUsage({ used: est.usage ?? 0, quota: est.quota ?? 0 });
@@ -128,6 +171,67 @@ export function SettingsScreen({ pin, onPurge }: Props) {
             </button>
           )}
         </div>
+      </section>
+
+      {/* ── Evidence vault key (Phase 2B) ── */}
+      <section className="mx-4 mb-4 bg-[#111] border border-[#1e1e1e] p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-[10px] text-[#00ff33] font-bold tracking-[0.2em] uppercase">Evidence Key Protection</h3>
+          {vaultStatus === 'unprotected' && (
+            <span className="text-[9px] text-[#b8860b] font-bold tracking-widest border border-[#b8860b]/50 px-2 py-0.5">DEVICE-BOUND ONLY</span>
+          )}
+          {vaultStatus === 'locked' && (
+            <span className="text-[9px] text-[#00ff33] font-bold tracking-widest border border-[#00ff33]/40 px-2 py-0.5">LOCKED</span>
+          )}
+          {vaultStatus === 'unlocked' && (
+            <button
+              onClick={() => { lockVault(); refreshVault(); }}
+              className="text-[9px] text-gray-400 font-bold tracking-widest border border-[#333] px-2 py-0.5 hover:border-[#b8860b] hover:text-[#b8860b]"
+            >
+              UNLOCKED — TAP TO LOCK
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] text-gray-500 tracking-wide leading-relaxed mb-3">
+          {vaultStatus === 'unprotected'
+            ? 'Evidence keys are sealed to this device, but the unseal key has no passphrase yet — someone with full access to this device could recover them. Set a passphrase to require it for any decryption.'
+            : 'Evidence keys can only be recovered with the vault passphrase. Capture keeps working while locked.'}
+        </p>
+
+        <div className="flex flex-col gap-1.5">
+          <input
+            type="password"
+            value={passA}
+            onChange={(e) => setPassA(e.target.value)}
+            placeholder={vaultStatus === 'locked' ? 'PASSPHRASE' : vaultStatus === 'unlocked' ? 'CURRENT PASSPHRASE' : 'NEW PASSPHRASE (MIN 8 CHARS)'}
+            className="bg-[#0d0d0d] border border-[#1e1e1e] px-2 py-1.5 text-[11px] text-gray-300 tracking-widest focus:border-[#00ff33]/50 outline-none"
+          />
+          {vaultStatus !== 'locked' && (
+            <input
+              type="password"
+              value={passB}
+              onChange={(e) => setPassB(e.target.value)}
+              placeholder={vaultStatus === 'unlocked' ? 'NEW PASSPHRASE' : 'CONFIRM PASSPHRASE'}
+              className="bg-[#0d0d0d] border border-[#1e1e1e] px-2 py-1.5 text-[11px] text-gray-300 tracking-widest focus:border-[#00ff33]/50 outline-none"
+            />
+          )}
+          <button
+            onClick={() => void handleVaultAction()}
+            disabled={!passA}
+            className="text-[10px] tracking-widest border border-[#00ff33]/50 text-[#00ff33] px-3 py-2 hover:bg-[#00ff33]/10 disabled:border-[#333] disabled:text-gray-600 self-start"
+          >
+            {vaultStatus === 'locked' ? 'UNLOCK' : vaultStatus === 'unlocked' ? 'CHANGE PASSPHRASE' : 'SET PASSPHRASE'}
+          </button>
+        </div>
+        {vaultMsg && (
+          <p className={`mt-2 text-[10px] tracking-wide ${vaultMsg.ok ? 'text-[#00ff33]/80' : 'text-[#cc6666]'}`}>
+            {vaultMsg.text}
+          </p>
+        )}
+        <p className="mt-2 text-[9px] text-gray-600 tracking-wide leading-relaxed">
+          There is no recovery: a forgotten passphrase means sealed evidence keys cannot be
+          recovered from this device. Uploaded evidence is unaffected.
+        </p>
       </section>
 
       {/* ── Mesh provisioning ── */}
