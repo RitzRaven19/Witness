@@ -91,20 +91,35 @@ function createResourceEl(type: ResourceType, status: ResourceStatus): HTMLEleme
   return wrapper;
 }
 
+export type BasemapMode = 'pack' | 'none' | 'online';
+
+/** Source-free style: dark canvas, zero network requests. Markers still render. */
+const BLANK_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {},
+  layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#101410' } }],
+};
+
 /**
- * Resolve the map style: prefer a locally cached PMTiles region from OPFS
- * (fully offline), falling back to the online CARTO dark basemap. Returns the
- * style plus any blob URL that must be revoked on teardown.
+ * Resolve the map style. Offline-first is a safety property, not a fallback:
+ *   1. an installed PMTiles region pack (fully offline), else
+ *   2. a blank source-free canvas — the map makes NO network requests.
+ * The online CARTO basemap is used only when the user explicitly opted in for
+ * this session (it reveals the client IP to the tile server on every pan).
  */
-async function resolveMapStyle(): Promise<{
+async function resolveMapStyle(allowOnline: boolean): Promise<{
   style: string | maplibregl.StyleSpecification;
   blobUrl: string | null;
+  mode: BasemapMode;
 }> {
   const tile = await getOPFSTileFile();
   if (tile) {
-    return { style: buildOfflineMapStyle(tile.blobUrl), blobUrl: tile.blobUrl };
+    return { style: buildOfflineMapStyle(tile.blobUrl), blobUrl: tile.blobUrl, mode: 'pack' };
   }
-  return { style: CARTO_DARK, blobUrl: null };
+  if (allowOnline) {
+    return { style: CARTO_DARK, blobUrl: null, mode: 'online' };
+  }
+  return { style: BLANK_STYLE, blobUrl: null, mode: 'none' };
 }
 
 export function TacticalMapScreen({ embedded = false }: { embedded?: boolean } = {}) {
@@ -130,7 +145,9 @@ export function TacticalMapScreen({ embedded = false }: { embedded?: boolean } =
   const [tileUrl, setTileUrl] = useState('');
   const [mapEpoch, setMapEpoch] = useState(0); // bump to re-init the map with a new style
   const dlAbortRef = useRef<AbortController | null>(null);
-  const [usingOffline, setUsingOffline] = useState(false);
+  const [basemapMode, setBasemapMode] = useState<BasemapMode>('none');
+  // Session-only opt-in: never persisted, so every launch starts silent.
+  const [allowOnline, setAllowOnline] = useState(false);
 
   useEffect(() => {
     getInstalledRegion().then(setRegion).catch(() => {});
@@ -229,13 +246,13 @@ export function TacticalMapScreen({ embedded = false }: { embedded?: boolean } =
 
     (async () => {
       if (!containerRef.current) return;
-      const resolved = await resolveMapStyle();
+      const resolved = await resolveMapStyle(allowOnline);
       if (cancelled) {
         if (resolved.blobUrl) URL.revokeObjectURL(resolved.blobUrl);
         return;
       }
       blobUrl = resolved.blobUrl;
-      setUsingOffline(resolved.blobUrl !== null);
+      setBasemapMode(resolved.mode);
 
       map = new maplibregl.Map({
         container: containerRef.current,
@@ -296,9 +313,9 @@ export function TacticalMapScreen({ embedded = false }: { embedded?: boolean } =
       if (blobUrl) URL.revokeObjectURL(blobUrl);
       mapRef.current = null;
     };
-  // Re-runs when mapEpoch bumps (tile pack installed/removed) to re-resolve the style.
+  // Re-runs when a tile pack is installed/removed or the online opt-in changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapEpoch]);
+  }, [mapEpoch, allowOnline]);
 
   const flyHome = () => {
     if (coords && mapRef.current) {
@@ -341,12 +358,14 @@ export function TacticalMapScreen({ embedded = false }: { embedded?: boolean } =
           <button
             onClick={() => setShowTiles(true)}
             className={`text-[9px] font-bold tracking-widest px-2 py-1 border transition-colors ${
-              usingOffline
+              basemapMode === 'pack'
                 ? 'bg-[#0d1f10] border-[#00ff33]/50 text-[#00ff33]'
+                : basemapMode === 'online'
+                ? 'border-[#cc4444]/70 text-[#cc4444] hover:bg-[#cc4444]/10'
                 : 'border-[#b8860b]/60 text-[#b8860b] hover:bg-[#b8860b]/10'
             }`}
           >
-            TILES
+            {basemapMode === 'online' ? 'TILES · ONLINE' : 'TILES'}
           </button>
           <button
             onClick={flyHome}
@@ -534,8 +553,12 @@ export function TacticalMapScreen({ embedded = false }: { embedded?: boolean } =
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-            {/* Current basemap status — honest about the online fallback */}
-            <div className={`border p-3 ${region ? 'bg-[#0d1f10] border-[#00ff33]/40' : 'bg-[#1a1205] border-[#b8860b]/50'}`}>
+            {/* Current basemap status — offline by default, online only by explicit opt-in */}
+            <div className={`border p-3 ${
+              region ? 'bg-[#0d1f10] border-[#00ff33]/40'
+              : allowOnline ? 'bg-[#1a0505] border-[#cc4444]/50'
+              : 'bg-[#1a1205] border-[#b8860b]/50'
+            }`}>
               {region ? (
                 <>
                   <div className="text-[10px] font-bold tracking-widest text-[#00ff33] mb-1">OFFLINE PACK INSTALLED</div>
@@ -544,13 +567,35 @@ export function TacticalMapScreen({ embedded = false }: { embedded?: boolean } =
                   </div>
                   <div className="text-[9px] text-gray-500 tracking-wide mt-1">Map renders with zero network requests.</div>
                 </>
+              ) : allowOnline ? (
+                <>
+                  <div className="text-[10px] font-bold tracking-widest text-[#cc4444] mb-1">ONLINE BASEMAP ACTIVE</div>
+                  <div className="text-[9px] text-gray-400 tracking-wide leading-relaxed mb-2">
+                    Every tile request reveals your IP to the CARTO tile server. This lasts for this
+                    session only.
+                  </div>
+                  <button
+                    onClick={() => setAllowOnline(false)}
+                    className="text-[9px] font-bold tracking-widest border border-[#00ff33]/50 text-[#00ff33] px-2.5 py-1.5 hover:bg-[#00ff33]/10"
+                  >
+                    GO SILENT (BLANK BASEMAP)
+                  </button>
+                </>
               ) : (
                 <>
-                  <div className="text-[10px] font-bold tracking-widest text-[#b8860b] mb-1">NO OFFLINE PACK</div>
-                  <div className="text-[9px] text-gray-400 tracking-wide leading-relaxed">
-                    The map is using the online CARTO basemap — it needs internet and each tile request
-                    reveals your IP to the tile server. Download a region pack for fully offline, silent maps.
+                  <div className="text-[10px] font-bold tracking-widest text-[#b8860b] mb-1">SILENT MODE — NO BASEMAP</div>
+                  <div className="text-[9px] text-gray-400 tracking-wide leading-relaxed mb-2">
+                    No offline pack installed, so the map shows verified resource markers on a blank
+                    canvas and makes ZERO network requests. Download a pack below for full offline
+                    streets — or temporarily use the online basemap (reveals your IP to the tile
+                    server; needs internet).
                   </div>
+                  <button
+                    onClick={() => setAllowOnline(true)}
+                    className="text-[9px] font-bold tracking-widest border border-[#cc4444]/60 text-[#cc4444] px-2.5 py-1.5 hover:bg-[#cc4444]/10"
+                  >
+                    USE ONLINE BASEMAP (THIS SESSION)
+                  </button>
                 </>
               )}
             </div>
