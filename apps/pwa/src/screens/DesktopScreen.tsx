@@ -128,7 +128,7 @@ export function DesktopScreen() {
 
         {/* ── CENTRE: the real tactical map ── */}
         <section className="flex-1 relative overflow-hidden">
-          <TacticalMapScreen />
+          <TacticalMapScreen embedded />
         </section>
       </main>
 

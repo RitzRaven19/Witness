@@ -107,7 +107,7 @@ async function resolveMapStyle(): Promise<{
   return { style: CARTO_DARK, blobUrl: null };
 }
 
-export function TacticalMapScreen() {
+export function TacticalMapScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapLoadedRef = useRef(false);
@@ -225,6 +225,7 @@ export function TacticalMapScreen() {
     let gpsMarker: maplibregl.Marker | null = null;
     let blobUrl: string | null = null;
     let cancelled = false;
+    let resizeObserver: ResizeObserver | null = null;
 
     (async () => {
       if (!containerRef.current) return;
@@ -245,8 +246,15 @@ export function TacticalMapScreen() {
       });
       mapRef.current = map;
 
+      // The canvas measures its container at construction, which can happen
+      // before flex layout settles (visible as a short map strip over a black
+      // void). Track the container and resize the canvas to match.
+      resizeObserver = new ResizeObserver(() => map.resize());
+      resizeObserver.observe(containerRef.current);
+
       map.on('load', () => {
         mapLoadedRef.current = true;
+        map.resize();
         // Nudge the marker effect now that the map can accept markers.
         setResources((r) => [...r]);
       });
@@ -279,6 +287,7 @@ export function TacticalMapScreen() {
     return () => {
       cancelled = true;
       unregisterProtocol();
+      resizeObserver?.disconnect();
       resourceMarkersRef.current.forEach((m) => m.remove());
       resourceMarkersRef.current = [];
       gpsMarker?.remove();
@@ -302,7 +311,7 @@ export function TacticalMapScreen() {
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d] overflow-hidden">
-      <TacticalHeader />
+      {!embedded && <TacticalHeader />}
 
       <div className="flex items-center justify-between px-4 py-2 bg-[#0d0d0d] shrink-0 z-10">
         <h2 className="text-xl font-bold text-white tracking-widest">EMERGENCY MAP</h2>
