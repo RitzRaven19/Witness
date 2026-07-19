@@ -24,6 +24,34 @@ No app store. No login required. Works in a browser. Works offline. Works when t
 
 ---
 
+## What is implemented today
+
+The monorepo currently ships five tested packages, a server, and a full PWA:
+
+| Component | What it does |
+|---|---|
+| `packages/crypto-core` | SHA-256 streaming hashing, AES-256-GCM, ECDSA P-256 + ML-DSA-65 hybrid signatures (FIPS 204 PQC), Argon2id KDF, hash-chained custody log, ECDH sealed boxes, key wrapping, shared publisher trust model |
+| `packages/offline-map` | Plane C: MapLibre + PMTiles offline maps, NGO-signed ResourceBundle verification, resumable region-pack downloads to OPFS |
+| `packages/lora-dtn` | LoRa DTN escape network: HMAC-authenticated packets, epidemic store-and-forward queue, E2E-encrypted mesh messages, **works with stock Meshtastic boards** (Web Bluetooth / Web Serial) |
+| `packages/knowledge-library` | Plane D: NGO-signed survival guides with hash-verified reads and no read history |
+| `apps/server` | Ingestion: tus resumable uploads of encrypted blobs, LoRa HashReceipt ingestion, receipt↔upload correlation |
+| `apps/pwa` | The app: capture → hash → encrypt → **key sealed to a passphrase-protectable vault** → queued upload + mesh receipt; evidence export with custody events; offline map with tile packs + QR bundle import/share; verified knowledge library; E2E mesh chat with QR contact-key pairing; panic purge + calculator decoy |
+
+Not yet built: real NGO trust bundles (demo content is locally signed through the same verification pipeline), Plane D.2 private clips, full Plane E mesh features (bloom-filter sync, chunked transfer), Plane F on-device AI, hardware RF field testing.
+
+### Quickstart
+
+```bash
+pnpm install
+pnpm -r test                      # 140 tests across all packages
+pnpm --filter @witness/server dev # ingestion server on :3001
+pnpm --filter @witness/pwa dev    # app on :5173
+```
+
+Point uploads at the bundled server with `apps/pwa/.env` → `VITE_TUS_ENDPOINT=http://localhost:3001/files`, and set the mesh ingest URL in Settings → `http://localhost:3001/ingest`.
+
+---
+
 ## The problem this solves
 
 - **56,000+** incidents of violence against civilians were recorded in 2025 — the highest in five years (ACLED)

@@ -12,9 +12,10 @@ import { TacticalMapScreen } from './screens/TacticalMapScreen';
 import { PurgeScreen } from './screens/PurgeScreen';
 import { DecoyScreen } from './screens/DecoyScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+import { EvidenceScreen } from './screens/EvidenceScreen';
 import { storageGet, storageSet, storageRemove } from './utils/safeStorage';
 
-export type MobileTab = 'home' | 'comms' | 'signal' | 'vault' | 'map' | 'capture' | 'settings';
+export type MobileTab = 'home' | 'comms' | 'signal' | 'vault' | 'map' | 'capture' | 'settings' | 'evidence';
 
 /** Returns the stored 4-digit PIN, creating one if it doesn't exist yet. */
 function getOrCreatePin(): string {
@@ -74,12 +75,13 @@ export function App() {
       {/* Screen content */}
       <main className="flex-1 overflow-hidden relative">
         {tab === 'home'    && <HomeScreen onNavigate={setTab} onPurge={() => setShowPurge(true)} />}
-        {tab === 'capture' && <CaptureScreen onSaved={() => setTab('vault')} />}
+        {tab === 'capture' && <CaptureScreen onSaved={() => setTab('evidence')} />}
         {tab === 'comms'   && <TacticalCommsScreen />}
         {tab === 'signal'  && <SignalScreen />}
         {tab === 'vault'   && <TacticalVaultScreen />}
         {tab === 'map'     && <TacticalMapScreen />}
         {tab === 'settings' && <SettingsScreen pin={pin} onPurge={() => setShowPurge(true)} />}
+        {tab === 'evidence' && <EvidenceScreen />}
 
         {/* Purge modal (absolute overlay) */}
         {showPurge && (

@@ -104,3 +104,28 @@ export async function storeBlob(id: string, data: ArrayBuffer): Promise<void> {
   await writable.write(data);
   await writable.close();
 }
+
+/** Read an evidence ciphertext blob from OPFS. */
+export async function readBlob(id: string): Promise<ArrayBuffer> {
+  const root = await navigator.storage.getDirectory();
+  const dir = await root.getDirectoryHandle('evidence');
+  const file = await (await dir.getFileHandle(`${id}.enc`)).getFile();
+  return file.arrayBuffer();
+}
+
+/** Delete one evidence item: IndexedDB record + OPFS ciphertext. */
+export async function deleteEvidence(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('evidence', id);
+  try {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle('evidence');
+    await dir.removeEntry(`${id}.enc`);
+  } catch { /* blob already absent */ }
+}
+
+/** Persist an updated record (e.g. after appending a custody event). */
+export async function putEvidence(record: EvidenceRecord): Promise<void> {
+  const db = await getDb();
+  await db.put('evidence', record);
+}

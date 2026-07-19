@@ -7,6 +7,7 @@ export type EventType =
   | 'transferred_p2p'
   | 'exported_qr'
   | 'uploaded'
+  | 'decrypted_local'
   | 'purged';
 
 export interface CustodyEvent {

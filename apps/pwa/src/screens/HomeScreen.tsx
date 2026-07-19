@@ -65,8 +65,14 @@ export function HomeScreen({ onNavigate, onPurge }: Props) {
         />
         <MenuItem
           icon={<DocsMenuIcon />}
-          label="DOCUMENTS"
-          sub="SURVIVAL PROTOCOLS & IDS"
+          label="EVIDENCE VAULT"
+          sub="CAPTURED ITEMS · EXPORT & CUSTODY"
+          onClick={() => onNavigate('evidence')}
+        />
+        <MenuItem
+          icon={<DocsMenuIcon />}
+          label="KNOWLEDGE LIBRARY"
+          sub="SIGNED SURVIVAL PROTOCOLS"
           onClick={() => onNavigate('vault')}
         />
         <MenuItem
