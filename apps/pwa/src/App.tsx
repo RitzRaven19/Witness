@@ -12,15 +12,16 @@ import { TacticalMapScreen } from './screens/TacticalMapScreen';
 import { PurgeScreen } from './screens/PurgeScreen';
 import { DecoyScreen } from './screens/DecoyScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+import { storageGet, storageSet, storageRemove } from './utils/safeStorage';
 
 export type MobileTab = 'home' | 'comms' | 'signal' | 'vault' | 'map' | 'capture' | 'settings';
 
 /** Returns the stored 4-digit PIN, creating one if it doesn't exist yet. */
 function getOrCreatePin(): string {
-  let pin = localStorage.getItem('witness_pin');
+  let pin = storageGet('witness_pin');
   if (!pin || pin.length !== 4) {
     pin = String(Math.floor(1000 + Math.random() * 9000));
-    localStorage.setItem('witness_pin', pin);
+    storageSet('witness_pin', pin);
   }
   return pin;
 }
@@ -29,7 +30,7 @@ export function App() {
   const [tab, setTab] = useState<MobileTab>('home');
   const [showPurge, setShowPurge] = useState(false);
   // Persist decoy mode across reloads — once purged the app stays as a calculator
-  const [decoyMode, setDecoyMode] = useState(() => localStorage.getItem('witness_decoy') === '1');
+  const [decoyMode, setDecoyMode] = useState(() => storageGet('witness_decoy') === '1');
   const [pin] = useState(getOrCreatePin);
   const isDesktop = useMediaQuery('(min-width: 1024px)');
 
@@ -57,7 +58,7 @@ export function App() {
   }, []);
 
   function deactivateDecoy() {
-    localStorage.removeItem('witness_decoy');
+    storageRemove('witness_decoy');
     setDecoyMode(false);
   }
 
@@ -86,7 +87,7 @@ export function App() {
             pin={pin}
             onClose={() => setShowPurge(false)}
             onActivateDecoy={() => {
-              localStorage.setItem('witness_decoy', '1');
+              storageSet('witness_decoy', '1');
               setShowPurge(false);
               setDecoyMode(true);
             }}

@@ -1,3 +1,10 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+allowBuilds:
+  # esbuild installs its platform binary via a postinstall script — required.
+  esbuild: true
+  # These only run "npx only-allow pnpm" (a package-manager guard) — not needed.
+  '@meshtastic/core': false
+  '@meshtastic/transport-web-bluetooth': false
+  '@meshtastic/transport-web-serial': false

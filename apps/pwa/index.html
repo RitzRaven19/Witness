@@ -10,6 +10,27 @@
     <meta name="apple-mobile-web-app-title" content="Witness" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Witness</title>
+    <script>
+      // Fatal-error visualizer: module-evaluation crashes happen before React
+      // (or any app code) runs, leaving a silent black screen in browsers
+      // without an open console. Registered in <head> so nothing beats it.
+      (function () {
+        function show(msg) {
+          var el = document.createElement('pre');
+          el.style.cssText =
+            'position:fixed;inset:0;z-index:99999;background:#1a0505;color:#ff6666;' +
+            'padding:16px;font:12px monospace;white-space:pre-wrap;overflow:auto;margin:0';
+          el.textContent = 'WITNESS STARTUP ERROR\n\n' + msg;
+          (document.body || document.documentElement).appendChild(el);
+        }
+        window.addEventListener('error', function (e) {
+          show((e.error && e.error.stack) || e.message || 'unknown error');
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          show((e.reason && e.reason.stack) || String(e.reason));
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

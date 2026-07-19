@@ -38,6 +38,7 @@ import {
   importEcdhPublicKey,
 } from '@witness/crypto-core';
 import { getDeviceKey, getDeviceEcdhKey, getDeviceEcdhPublicRaw } from './deviceKey';
+import { storageGet, storageSet, storageRemove } from '../utils/safeStorage';
 import type { EvidenceRecord } from './db';
 
 const MESH_KEY_STORAGE = 'witness_mesh_key';
@@ -54,10 +55,10 @@ export const DEFAULT_MESH_KEY_HEX =
 const HEX64 = /^[0-9a-fA-F]{64}$/;
 
 function loadMeshKeyHex(): string {
-  let hex = localStorage.getItem(MESH_KEY_STORAGE);
+  let hex = storageGet(MESH_KEY_STORAGE);
   if (!hex || !HEX64.test(hex)) {
     hex = DEFAULT_MESH_KEY_HEX;
-    localStorage.setItem(MESH_KEY_STORAGE, hex);
+    storageSet(MESH_KEY_STORAGE, hex);
   }
   return hex.toLowerCase();
 }
@@ -107,7 +108,7 @@ class LoraStore {
   private unsubscribeFrames: (() => void) | null = null;
   private meshKeyHex = loadMeshKeyHex();
   private meshKey = hexToBytes(this.meshKeyHex);
-  private ingestUrl = localStorage.getItem(INGEST_URL_STORAGE);
+  private ingestUrl = storageGet(INGEST_URL_STORAGE);
   private readonly listeners = new Set<Listener>();
   private inbox: InboxMessage[] = [];
   private readonly inboxListeners = new Set<InboxListener>();
@@ -159,7 +160,7 @@ class LoraStore {
     if (!HEX64.test(clean)) throw new Error('Mesh key must be 64 hex characters');
     this.meshKeyHex = clean;
     this.meshKey = hexToBytes(clean);
-    localStorage.setItem(MESH_KEY_STORAGE, clean);
+    storageSet(MESH_KEY_STORAGE, clean);
     this.emit({ meshKeyFp: clean.slice(0, 8) });
   }
 
@@ -171,8 +172,8 @@ class LoraStore {
   setIngestUrl(url: string | null): void {
     const clean = url?.trim() || null;
     this.ingestUrl = clean;
-    if (clean) localStorage.setItem(INGEST_URL_STORAGE, clean);
-    else localStorage.removeItem(INGEST_URL_STORAGE);
+    if (clean) storageSet(INGEST_URL_STORAGE, clean);
+    else storageRemove(INGEST_URL_STORAGE);
     this.emit({ ingestConfigured: !!clean });
     void this.flushDeliveries();
   }
