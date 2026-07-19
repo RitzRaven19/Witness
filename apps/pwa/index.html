@@ -11,6 +11,19 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Witness</title>
     <script>
+      // Node-global shim: @meshtastic/core's bundled logger reads process.env /
+      // process.cwd / process.version at module-eval time, which crashes real
+      // browsers (ReferenceError: process is not defined) before any app code
+      // runs. Must be defined in <head>, ahead of every module script.
+      if (typeof window.process === 'undefined') {
+        window.process = {
+          env: {},
+          argv: [],
+          platform: 'browser',
+          version: 'v0.0.0',
+          cwd: function () { return '/'; },
+        };
+      }
       // Fatal-error visualizer: module-evaluation crashes happen before React
       // (or any app code) runs, leaving a silent black screen in browsers
       // without an open console. Registered in <head> so nothing beats it.
