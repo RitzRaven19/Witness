@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { TacticalHeader } from '../components/TacticalHeader';
 import { QrScannerModal } from '../components/QrScannerModal';
 import { QrShareModal } from '../components/QrShareModal';
+import { ClipsPanel } from './ClipsPanel';
 import {
   loadProtocols,
   importKnowledgeJson,
@@ -9,7 +10,10 @@ import {
   type LoadedProtocol,
 } from '../store/knowledgeStore';
 
+type LibraryTab = 'protocols' | 'clips';
+
 export function TacticalVaultScreen() {
+  const [tab, setTab] = useState<LibraryTab>('protocols');
   const [items, setItems] = useState<LoadedProtocol[] | null>(null);
   const [active, setActive] = useState<LoadedProtocol | null>(null);
   const [showScanner, setShowScanner] = useState(false);
@@ -56,87 +60,118 @@ export function TacticalVaultScreen() {
       <div className="px-4 pt-4 pb-3 border-b border-[#1a1a1a] shrink-0">
         <div className="flex items-start justify-between">
           <h2 className="text-3xl font-bold text-white tracking-widest">KNOWLEDGE<br/>LIBRARY</h2>
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={() => setShowScanner(true)}
-              className="text-[9px] font-bold tracking-widest px-2 py-1 border border-[#333] text-gray-400 hover:border-[#00ff33]/50 hover:text-[#00ff33] transition-colors"
-            >
-              IMPORT
-            </button>
-            <button
-              onClick={handleShare}
-              className="text-[9px] font-bold tracking-widest px-2 py-1 border border-[#333] text-gray-400 hover:border-[#00ff33]/50 hover:text-[#00ff33] transition-colors"
-            >
-              SHARE
-            </button>
-          </div>
-        </div>
-        <p className="text-[10px] text-gray-500 tracking-widest mt-1">
-          {items === null ? 'VERIFYING…' : `${items.length} PROTOCOLS // OFFLINE // HYBRID-SIG VERIFIED`}
-        </p>
-      </div>
-
-      {/* Import/share feedback */}
-      {msg && (
-        <div className={`mx-4 mt-2 px-3 py-2 border text-[10px] font-bold tracking-widest ${
-          msg.ok ? 'bg-[#0d1f10] border-[#00ff33]/60 text-[#00ff33]' : 'bg-[#1a0505] border-[#cc4444] text-[#cc6666]'
-        }`}>
-          {msg.text}
-        </div>
-      )}
-
-      {/* Protocol list */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
-        {items === null ? (
-          <p className="text-gray-600 text-[11px] tracking-widest text-center py-8">
-            VERIFYING SIGNATURES…
-          </p>
-        ) : items.length === 0 ? (
-          <p className="text-gray-600 text-[11px] tracking-widest text-center py-8 leading-relaxed">
-            NO VERIFIED CONTENT.<br/>Import a signed knowledge bundle via QR.
-          </p>
-        ) : (
-          items.map((item) => {
-            const p = item.protocol;
-            return (
+          {tab === 'protocols' && (
+            <div className="flex gap-2 pt-1">
               <button
-                key={item.articleId}
-                onClick={() => setActive(item)}
-                className="flex items-center gap-4 bg-[#111] border border-[#1e1e1e] p-4 hover:bg-[#141414] hover:border-[#00ff33]/20 transition-all text-left active:scale-[0.99]"
+                onClick={() => setShowScanner(true)}
+                className="text-[9px] font-bold tracking-widest px-2 py-1 border border-[#333] text-gray-400 hover:border-[#00ff33]/50 hover:text-[#00ff33] transition-colors"
               >
-                <div
-                  className="w-10 h-10 flex items-center justify-center shrink-0 border"
-                  style={{ borderColor: `${p.categoryColor}44`, background: `${p.categoryColor}11` }}
-                >
-                  <CategoryIcon category={p.category} color={p.categoryColor} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-white font-bold tracking-widest text-[13px]">{p.title}</div>
-                  <div className="text-[10px] text-gray-500 tracking-widest mt-0.5">{p.subtitle}</div>
-                </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span
-                    className="text-[8px] font-bold tracking-widest px-1.5 py-0.5 border"
-                    style={{ color: p.categoryColor, borderColor: `${p.categoryColor}44`, background: `${p.categoryColor}11` }}
-                  >
-                    {p.category}
-                  </span>
-                  <svg className="w-3.5 h-3.5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
-                  </svg>
-                </div>
+                IMPORT
               </button>
-            );
-          })
+              <button
+                onClick={handleShare}
+                className="text-[9px] font-bold tracking-widest px-2 py-1 border border-[#333] text-gray-400 hover:border-[#00ff33]/50 hover:text-[#00ff33] transition-colors"
+              >
+                SHARE
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* D.1 signed protocols vs D.2 private clips — same plane, distinct trust story */}
+        <div className="flex gap-0 mt-3 border border-[#1e1e1e]">
+          <button
+            onClick={() => setTab('protocols')}
+            className={`flex-1 py-1.5 text-[9px] font-bold tracking-widest transition-colors ${
+              tab === 'protocols' ? 'bg-[#0d1f10] text-[#00ff33]' : 'text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            SIGNED PROTOCOLS
+          </button>
+          <button
+            onClick={() => setTab('clips')}
+            className={`flex-1 py-1.5 text-[9px] font-bold tracking-widest border-l border-[#1e1e1e] transition-colors ${
+              tab === 'clips' ? 'bg-[#0d1f10] text-[#00ff33]' : 'text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            MY CLIPS
+          </button>
+        </div>
+
+        {tab === 'protocols' && (
+          <p className="text-[10px] text-gray-500 tracking-widest mt-2">
+            {items === null ? 'VERIFYING…' : `${items.length} PROTOCOLS // OFFLINE // HYBRID-SIG VERIFIED`}
+          </p>
         )}
       </div>
 
-      {/* Footer — real provenance */}
-      {publisherName && (
-        <div className="mx-4 mb-4 shrink-0 flex items-center justify-between border-t border-[#1a1a1a] pt-3">
-          <span className="text-[9px] text-gray-600 tracking-widest">PUBLISHER: {publisherName.toUpperCase()}</span>
-          <span className="text-[9px] text-[#00ff33]/60 tracking-widest">HASH-VERIFIED ON READ</span>
-        </div>
+      {tab === 'clips' ? (
+        <ClipsPanel />
+      ) : (
+        <>
+          {/* Import/share feedback */}
+          {msg && (
+            <div className={`mx-4 mt-2 px-3 py-2 border text-[10px] font-bold tracking-widest ${
+              msg.ok ? 'bg-[#0d1f10] border-[#00ff33]/60 text-[#00ff33]' : 'bg-[#1a0505] border-[#cc4444] text-[#cc6666]'
+            }`}>
+              {msg.text}
+            </div>
+          )}
+
+          {/* Protocol list */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
+            {items === null ? (
+              <p className="text-gray-600 text-[11px] tracking-widest text-center py-8">
+                VERIFYING SIGNATURES…
+              </p>
+            ) : items.length === 0 ? (
+              <p className="text-gray-600 text-[11px] tracking-widest text-center py-8 leading-relaxed">
+                NO VERIFIED CONTENT.<br/>Import a signed knowledge bundle via QR.
+              </p>
+            ) : (
+              items.map((item) => {
+                const p = item.protocol;
+                return (
+                  <button
+                    key={item.articleId}
+                    onClick={() => setActive(item)}
+                    className="flex items-center gap-4 bg-[#111] border border-[#1e1e1e] p-4 hover:bg-[#141414] hover:border-[#00ff33]/20 transition-all text-left active:scale-[0.99]"
+                  >
+                    <div
+                      className="w-10 h-10 flex items-center justify-center shrink-0 border"
+                      style={{ borderColor: `${p.categoryColor}44`, background: `${p.categoryColor}11` }}
+                    >
+                      <CategoryIcon category={p.category} color={p.categoryColor} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white font-bold tracking-widest text-[13px]">{p.title}</div>
+                      <div className="text-[10px] text-gray-500 tracking-widest mt-0.5">{p.subtitle}</div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span
+                        className="text-[8px] font-bold tracking-widest px-1.5 py-0.5 border"
+                        style={{ color: p.categoryColor, borderColor: `${p.categoryColor}44`, background: `${p.categoryColor}11` }}
+                      >
+                        {p.category}
+                      </span>
+                      <svg className="w-3.5 h-3.5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
+                      </svg>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {/* Footer — real provenance */}
+          {publisherName && (
+            <div className="mx-4 mb-4 shrink-0 flex items-center justify-between border-t border-[#1a1a1a] pt-3">
+              <span className="text-[9px] text-gray-600 tracking-widest">PUBLISHER: {publisherName.toUpperCase()}</span>
+              <span className="text-[9px] text-[#00ff33]/60 tracking-widest">HASH-VERIFIED ON READ</span>
+            </div>
+          )}
+        </>
       )}
 
       {/* QR scanner for signed knowledge bundles (multi-frame capable) */}

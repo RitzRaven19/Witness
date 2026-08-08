@@ -180,11 +180,12 @@ async function getVaultPublicKey(): Promise<CryptoKey> {
 }
 
 /**
- * Seal a raw per-evidence AES key to the vault public key. Needs no secret,
- * so capture works even while the vault is locked. Returns hex of the sealed
- * box (ephemeral_pub ‖ iv ‖ ct+tag).
+ * Seal a raw AES key (evidence, a knowledge clip, anything device-local and
+ * sensitive) to the vault public key. Needs no secret, so callers like
+ * capture work even while the vault is locked. Returns hex of the sealed box
+ * (ephemeral_pub ‖ iv ‖ ct+tag).
  */
-export async function sealEvidenceKey(rawKey: ArrayBuffer): Promise<string> {
+export async function sealToVault(rawKey: ArrayBuffer): Promise<string> {
   const pub = await getVaultPublicKey();
   return bytesToHex(await sealToPublicKey(pub, new Uint8Array(rawKey)));
 }
@@ -267,11 +268,11 @@ export async function changeVaultPassphrase(
 }
 
 /**
- * Recover a per-evidence AES key from its sealed box. Requires the vault to
- * be unprotected or unlocked; returns null otherwise (or if the box is not
- * addressed to this vault). Future export/decrypt flows build on this.
+ * Recover an AES key from its vault sealed box. Requires the vault to be
+ * unprotected or unlocked; returns null otherwise (or if the box is not
+ * addressed to this vault). Used by evidence export and knowledge clip reads.
  */
-export async function unsealEvidenceKey(sealedHex: string): Promise<CryptoKey | null> {
+export async function unsealFromVault(sealedHex: string): Promise<CryptoKey | null> {
   const priv = await getVaultPrivateKey();
   if (!priv) return null;
   const raw = await openSealed(priv, hexToBytes(sealedHex));

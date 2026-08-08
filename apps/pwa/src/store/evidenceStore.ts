@@ -1,6 +1,6 @@
 import { hexToBytes } from '@witness/crypto-core';
 import { getDb, closeDb, type EvidenceRecord, type EvidenceStatus } from './db';
-import { resetDeviceKeyCache, sealEvidenceKey } from './deviceKey';
+import { resetDeviceKeyCache, sealToVault } from './deviceKey';
 
 /**
  * Phase 2B migration: any evidence record still carrying a legacy raw AES key
@@ -14,7 +14,7 @@ export async function migrateLegacyEvidenceKeys(): Promise<number> {
   for (const rec of all) {
     if (!rec.keyHex) continue;
     if (!rec.sealedKeyHex) {
-      rec.sealedKeyHex = await sealEvidenceKey(hexToBytes(rec.keyHex).buffer as ArrayBuffer);
+      rec.sealedKeyHex = await sealToVault(hexToBytes(rec.keyHex).buffer as ArrayBuffer);
     }
     delete rec.keyHex;
     await db.put('evidence', rec);
@@ -65,7 +65,8 @@ export async function purgeAll(): Promise<void> {
   await deleteDb('witness-map');       // Plane C resource bundles
   await deleteDb('witness-lora-dtn');  // LoRa DTN queue + dedup history
   await deleteDb('witness-keys');      // device signing key
-  await deleteDb('witness-knowledge'); // Plane D knowledge bundles
+  await deleteDb('witness-knowledge'); // Plane D.1 NGO-signed knowledge bundles
+  await deleteDb('witness-clips');     // Plane D.2 user clips — always deleted, never hidden
   resetDeviceKeyCache();               // drop in-memory device key after wipe
 
   // 2. Wipe OPFS (encrypted blobs + any future offline-map tile cache)

@@ -1,8 +1,8 @@
 # Witness — Plane D: Offline Knowledge Library
 
-**Version:** 0.2
-**Date:** 2026-03-27 (updated 2026-07-05)
-**Status:** D.1 implemented (`@witness/knowledge-library`) — signed bundles verified with the shared hybrid ECDSA P-256 + ML-DSA-65 trust chain (not the Ed25519 named below; "no additional trust model" wins), hash-verified reads, no read history, panic-purged. D.2 user clips, encryption at rest, and mesh chunk distribution remain future work.
+**Version:** 0.3
+**Date:** 2026-03-27 (updated 2026-07-20)
+**Status:** D.1 and D.2 implemented (`@witness/knowledge-library`). D.1: signed bundles verified with the shared hybrid ECDSA P-256 + ML-DSA-65 trust chain (not the Ed25519 named below; "no additional trust model" wins), hash-verified reads, no read history, panic-purged. D.2: user-clipped articles, each encrypted under its own fresh AES-256-GCM key sealed to the device vault (same Phase 2B mechanism protecting evidence keys — locked vault means clips can't be read either); `source_url` opt-in only, tracking parameters stripped before storage; stored in IndexedDB rather than OPFS (clips are always "small" text per the spec's own size threshold); panic purge always fully deletes clips (no hide/escrow — that model is unbuilt for any plane in this codebase and wouldn't help recover unsigned, no-canonical-copy content anyway). Mesh chunk distribution for D.1 bundles remains future work.
 
 ---
 
@@ -209,23 +209,31 @@ No residue of user clips or pending evidence remains after either action.
 
 ## Package
 
-`@witness/knowledge-library`
+`@witness/knowledge-library` — actual layout (adjusted from the original plan
+below: bundle storage and verification turned out to belong together, tags
+are IndexedDB-indexed rather than a helper module, and network fetch / UI
+rendering are app-layer concerns handled in `apps/pwa/src/store/*Store.ts`,
+not inside the portable package):
 
 ```
 packages/knowledge-library/
   src/
-    bundle-store.ts        # OPFS + IndexedDB read/write for bundles
-    clip-store.ts          # OPFS + IndexedDB read/write for clips
-    bundle-verify.ts       # Ed25519 signature verification against trust bundle
-    bundle-sync.ts         # Network fetch + Plane E chunk receive
-    reader.ts              # Plaintext extraction and rendering helpers
+    bundle-verify.ts       # KnowledgeBundle hybrid-signature verification (D.1)
+    knowledge-store.ts     # IndexedDB read/write + hash-verified reads for bundles (D.1)
+    clip-store.ts          # IndexedDB read/write, per-clip AES-GCM encrypt/decrypt (D.2)
     index.ts               # Package exports
 ```
+
+Device-specific glue (vault key sealing, QR import/share, URL fetch/tracking-
+param stripping, the reader UI) lives in `apps/pwa/src/store/knowledgeStore.ts`,
+`apps/pwa/src/store/clipStore.ts`, and `apps/pwa/src/screens/{TacticalVaultScreen,ClipsPanel}.tsx` —
+the package itself stays free of DOM/device APIs so it composes and unit-tests
+independently (see `clip-store.ts`'s injected seal/unseal callbacks).
 
 ---
 
 ## Open questions
 
-1. Should user-clipped articles survive a panic purge? (Current proposal: no — purge is total.)
-2. Should bundle tags be stored in IndexedDB plaintext for filtering, or encrypted and loaded into memory on unlock? (Security vs. usability trade-off.)
+1. ~~Should user-clipped articles survive a panic purge?~~ Resolved: no — implemented as always-delete (`clip-store.ts`).
+2. Bundle tags are currently stored in IndexedDB plaintext for filtering (matches D.1's existing `ArticleManifestEntry.tags`); clip tags follow the same choice. Revisit if tag values themselves prove sensitive enough to warrant encrypting them too.
 3. Minimum viable bundle set for MVP: which 3–5 organisations should we approach first for signed content?

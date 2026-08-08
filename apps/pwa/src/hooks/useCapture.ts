@@ -9,7 +9,7 @@ import {
   appendEvent,
 } from '@witness/crypto-core';
 import { addEvidence, storeBlob } from '../store/evidenceStore';
-import { sealEvidenceKey } from '../store/deviceKey';
+import { sealToVault } from '../store/deviceKey';
 import { loraStore } from '../store/loraStore';
 import { processUploadQueue, registerBackgroundSync } from '../store/uploadQueue';
 import { stripMetadata } from '../utils/stripMetadata';
@@ -60,7 +60,7 @@ export function useCapture(onSaved: () => void) {
         ivHex: bytesToHex(iv),
         // Phase 2B: the raw AES key never touches storage — sealed to the
         // device vault public key at the moment of capture.
-        sealedKeyHex: await sealEvidenceKey(rawKey),
+        sealedKeyHex: await sealToVault(rawKey),
         capturedAt: Date.now(),
         sizeBytes: buffer.byteLength,
         status: 'queued',

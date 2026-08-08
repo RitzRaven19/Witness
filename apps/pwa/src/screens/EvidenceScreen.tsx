@@ -7,7 +7,7 @@ import {
   deleteEvidence,
   putEvidence,
 } from '../store/evidenceStore';
-import { getVaultStatus, unlockVault, unsealEvidenceKey, type VaultStatus } from '../store/deviceKey';
+import { getVaultStatus, unlockVault, unsealFromVault, type VaultStatus } from '../store/deviceKey';
 import type { EvidenceRecord } from '../store/db';
 
 const TYPE_META: Record<EvidenceRecord['type'], { mime: string; ext: string; label: string }> = {
@@ -57,7 +57,7 @@ export function EvidenceScreen() {
     setBusyId(rec.id);
     try {
       if (!rec.sealedKeyHex) throw new Error('No sealed key on record');
-      const key = await unsealEvidenceKey(rec.sealedKeyHex);
+      const key = await unsealFromVault(rec.sealedKeyHex);
       if (!key) {
         setAskPass(rec); // vault locked — collect passphrase
         return;

@@ -22,3 +22,14 @@ export {
   KNOWLEDGE_DB_VERSION,
   type ArticleListing,
 } from './knowledge-store.js';
+
+export {
+  ClipStore,
+  CLIPS_DB_NAME,
+  CLIPS_DB_VERSION,
+  type ClippedArticle,
+  type NewClip,
+  type ClipListing,
+  type SealKeyFn,
+  type UnsealKeyFn,
+} from './clip-store.js';
