@@ -12,6 +12,9 @@ export interface LoraMeshControls {
   getMeshKeyHex: () => string;
   setIngestUrl: (url: string | null) => void;
   getIngestUrl: () => string | null;
+  /** Bearer token for the ingestion endpoint, if the operator's server requires one. */
+  setIngestToken: (token: string | null) => void;
+  getIngestToken: () => string | null;
 }
 
 /** React binding for the LoRa DTN mesh runtime (see store/loraStore.ts). */
@@ -26,6 +29,8 @@ export function useLoraMesh(): LoraMeshControls {
   const getMeshKeyHex = useCallback(() => loraStore.getMeshKeyHex(), []);
   const setIngestUrl = useCallback((url: string | null) => loraStore.setIngestUrl(url), []);
   const getIngestUrl = useCallback(() => loraStore.getIngestUrl(), []);
+  const setIngestToken = useCallback((token: string | null) => loraStore.setIngestToken(token), []);
+  const getIngestToken = useCallback(() => loraStore.getIngestToken(), []);
 
   return {
     status,
@@ -37,5 +42,7 @@ export function useLoraMesh(): LoraMeshControls {
     getMeshKeyHex,
     setIngestUrl,
     getIngestUrl,
+    setIngestToken,
+    getIngestToken,
   };
 }

@@ -1,0 +1,11 @@
+{$DOMAIN} {
+	# Automatic HTTPS via Let's Encrypt — no manual certificate management.
+	reverse_proxy server:3001
+
+	# tus resumable uploads can run for a long time on slow field connections.
+	request_body {
+		max_size 2GB
+	}
+
+	encode gzip
+}

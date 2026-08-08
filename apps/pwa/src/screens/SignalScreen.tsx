@@ -9,13 +9,14 @@ export function SignalScreen() {
 
   const {
     status, serialAvailable, bleAvailable, connect, disconnect,
-    setMeshKey, getMeshKeyHex, setIngestUrl, getIngestUrl,
+    setMeshKey, getMeshKeyHex, setIngestUrl, getIngestUrl, setIngestToken, getIngestToken,
   } = useLoraMesh();
   const anyTransport = serialAvailable || bleAvailable;
 
   const [showConfig, setShowConfig] = useState(false);
   const [meshKeyInput, setMeshKeyInput] = useState('');
   const [ingestInput, setIngestInput] = useState('');
+  const [ingestTokenInput, setIngestTokenInput] = useState('');
   const [configMsg, setConfigMsg] = useState<string | null>(null);
 
   function applyMeshKey() {
@@ -31,6 +32,12 @@ export function SignalScreen() {
   function applyIngestUrl() {
     setIngestUrl(ingestInput || null);
     setConfigMsg(ingestInput ? 'Ingestion endpoint set' : 'Ingestion endpoint cleared');
+  }
+
+  function applyIngestToken() {
+    setIngestToken(ingestTokenInput || null);
+    setIngestTokenInput('');
+    setConfigMsg(ingestTokenInput ? 'Ingestion token set' : 'Ingestion token cleared');
   }
 
   useEffect(() => {
@@ -172,6 +179,22 @@ export function SignalScreen() {
                   className="flex-1 min-w-0 bg-[#0d0d0d] border border-[#1e1e1e] px-2 py-1.5 text-[10px] text-gray-300 font-mono tracking-tight focus:border-[#00ff33]/50 outline-none"
                 />
                 <button onClick={applyIngestUrl} className="text-[9px] tracking-widest border border-[#00ff33]/50 text-[#00ff33] px-2 hover:bg-[#00ff33]/10">SET</button>
+              </div>
+            </div>
+            <div>
+              <div className="text-[8px] text-gray-600 tracking-widest mb-1">
+                INGESTION TOKEN {getIngestToken() ? '(SET)' : '(NONE — ONLY IF YOUR SERVER REQUIRES ONE)'}
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  type="password"
+                  value={ingestTokenInput}
+                  onChange={(e) => setIngestTokenInput(e.target.value)}
+                  placeholder="BEARER TOKEN"
+                  spellCheck={false}
+                  className="flex-1 min-w-0 bg-[#0d0d0d] border border-[#1e1e1e] px-2 py-1.5 text-[10px] text-gray-300 font-mono tracking-tight focus:border-[#00ff33]/50 outline-none"
+                />
+                <button onClick={applyIngestToken} className="text-[9px] tracking-widest border border-[#00ff33]/50 text-[#00ff33] px-2 hover:bg-[#00ff33]/10">SET</button>
               </div>
             </div>
             {configMsg && <p className="text-[9px] text-[#00ff33]/70 tracking-wide">{configMsg}</p>}

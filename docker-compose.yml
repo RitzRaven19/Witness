@@ -1,0 +1,41 @@
+# Witness ingestion server — production compose.
+#
+#   cp .env.deploy.example .env.deploy   # fill in DOMAIN + INGEST_TOKEN
+#   docker compose --env-file .env.deploy up -d --build
+#
+# Caddy terminates TLS with an automatic Let's Encrypt certificate for
+# DOMAIN and reverse-proxies everything to the server on the internal
+# network — the server container publishes no port directly.
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    environment:
+      INGEST_TOKEN: ${INGEST_TOKEN:?set INGEST_TOKEN in .env.deploy}
+    volumes:
+      - server-data:/app/data
+    expose:
+      - "3001"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env.deploy}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - server
+
+volumes:
+  server-data:
+  caddy-data:
+  caddy-config:

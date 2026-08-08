@@ -43,6 +43,7 @@ import type { EvidenceRecord } from './db';
 
 const MESH_KEY_STORAGE = 'witness_mesh_key';
 const INGEST_URL_STORAGE = 'witness_ingest_url';
+const INGEST_TOKEN_STORAGE = 'witness_ingest_token';
 
 /**
  * Published default mesh key so freshly-installed nodes can relay to one another.
@@ -109,6 +110,8 @@ class LoraStore {
   private meshKeyHex = loadMeshKeyHex();
   private meshKey = hexToBytes(this.meshKeyHex);
   private ingestUrl = storageGet(INGEST_URL_STORAGE);
+  /** Bearer token for the ingestion endpoint, if the operator's server requires one. */
+  private ingestToken = storageGet(INGEST_TOKEN_STORAGE);
   private readonly listeners = new Set<Listener>();
   private inbox: InboxMessage[] = [];
   private readonly inboxListeners = new Set<InboxListener>();
@@ -178,13 +181,27 @@ class LoraStore {
     void this.flushDeliveries();
   }
 
+  getIngestToken(): string | null {
+    return this.ingestToken;
+  }
+
+  /** Bearer token required by the operator's ingestion server, if any. */
+  setIngestToken(token: string | null): void {
+    const clean = token?.trim() || null;
+    this.ingestToken = clean;
+    if (clean) storageSet(INGEST_TOKEN_STORAGE, clean);
+    else storageRemove(INGEST_TOKEN_STORAGE);
+  }
+
   /** POST a receipt payload to the ingestion endpoint. Returns true on 2xx. */
   private async deliverPayload(payload: Uint8Array): Promise<boolean> {
     if (!this.ingestUrl || !navigator.onLine) return false;
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' };
+      if (this.ingestToken) headers.Authorization = `Bearer ${this.ingestToken}`;
       const res = await fetch(this.ingestUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
+        headers,
         body: payload as unknown as BodyInit,
       });
       return res.ok;

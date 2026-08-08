@@ -42,6 +42,31 @@ const UPLOAD_DIR = join(DATA_DIR, 'uploads');
 const MANIFEST_DIR = join(DATA_DIR, 'manifests'); // one JSON per completed upload, named <mediaHash>.json
 const RECEIPT_DIR = join(DATA_DIR, 'receipts'); // one JSON per mesh receipt, named <mediaHash>.json
 
+/**
+ * Optional shared bearer token gating the write paths (tus uploads + LoRa
+ * receipt ingestion). Unset by default so local dev / the existing tests need
+ * no configuration; an NGO deployment should set INGEST_TOKEN so this server
+ * cannot be flooded with garbage evidence or used to plant fake receipts by
+ * anyone who finds the URL. Read endpoints (/health, /receipts) stay open —
+ * they leak nothing beyond hashes that are already public once redeemed.
+ */
+const AUTH_TOKEN = process.env.INGEST_TOKEN || null;
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** True if the request carries the correct bearer token, or auth is disabled. */
+function isAuthorized(req: http.IncomingMessage): boolean {
+  if (!AUTH_TOKEN) return true;
+  const header = req.headers.authorization ?? '';
+  const [scheme, token] = header.split(' ');
+  return scheme === 'Bearer' && !!token && timingSafeEqual(token, AUTH_TOKEN);
+}
+
 interface UploadManifest {
   blobId: string;
   mediaHash: string; // client-claimed plaintext SHA-256 (hex)
@@ -227,16 +252,18 @@ export async function createServer(): Promise<http.Server> {
     setCors(res);
     const url = new URL(req.url ?? '/', 'http://localhost');
 
-    if (url.pathname === '/files' || url.pathname.startsWith('/files/')) {
-      void tus.handle(req, res);
-      return;
-    }
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
       res.end();
       return;
     }
+    if (url.pathname === '/files' || url.pathname.startsWith('/files/')) {
+      if (!isAuthorized(req)) return json(res, 401, { ok: false, error: 'unauthorized' });
+      void tus.handle(req, res);
+      return;
+    }
     if (req.method === 'POST' && url.pathname === '/ingest') {
+      if (!isAuthorized(req)) return json(res, 401, { ok: false, error: 'unauthorized' });
       void handleIngest(req, res).catch(() => json(res, 500, { ok: false }));
       return;
     }
